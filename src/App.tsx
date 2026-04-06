@@ -13,9 +13,10 @@ import { Categories } from './components/Categories';
 import { CRM } from './components/CRM';
 import { Supplier } from './components/Supplier';
 import { Setting } from './components/Setting';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings } from 'lucide-react';
+import { Report } from './components/Report';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3 } from 'lucide-react';
 
-export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting';
+export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report';
 
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
@@ -62,6 +63,7 @@ export default function App() {
       case 'CRM': return <CRM />;
       case 'Supplier': return <Supplier />;
       case 'Setting': return <Setting />;
+      case 'Report': return <Report />;
       default: return <Dashboard />;
     }
   };

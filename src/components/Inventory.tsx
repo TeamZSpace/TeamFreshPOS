@@ -205,6 +205,7 @@ export function Inventory() {
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Selling</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Margin (%)</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Stock</th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Expiry Date</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Purchase Date</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
@@ -243,6 +244,18 @@ export function Inventory() {
                     )}>
                       {product.stock}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 text-center text-xs">
+                    {product.expiryDate ? (
+                      <span className={cn(
+                        "px-2 py-1 rounded-lg font-medium",
+                        new Date(product.expiryDate).getTime() < new Date().getTime() + 30 * 24 * 60 * 60 * 1000
+                          ? "bg-amber-50 text-amber-700 border border-amber-100"
+                          : "text-slate-600"
+                      )}>
+                        {format(new Date(product.expiryDate), 'MMM d, yyyy')}
+                      </span>
+                    ) : '-'}
                   </td>
                   <td className="px-6 py-4 text-center text-xs text-slate-500">
                     {product.purchaseDate ? format(new Date(product.purchaseDate), 'MMM d, yyyy') : '-'}

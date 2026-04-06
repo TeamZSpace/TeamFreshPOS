@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
-import { doc, onSnapshot, setDoc, collection, addDoc } from 'firebase/firestore';
-import { Settings, Building2, Phone, MapPin, Save, Database, Download, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { doc, onSnapshot, setDoc, collection, addDoc, writeBatch } from 'firebase/firestore';
+import { Settings, Building2, Phone, MapPin, Save, Database, Download, RefreshCw, CheckCircle2, Upload } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../lib/utils';
 
 interface CompanySettings {
@@ -18,7 +18,9 @@ export function Setting() {
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const [seedStatus, setSeedStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const unsub = onSnapshot(doc(db, 'settings', 'company'), (snapshot) => {
@@ -53,6 +55,29 @@ export function Setting() {
     URL.revokeObjectURL(url);
   };
 
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      if (data.companyName) {
+        await setDoc(doc(db, 'settings', 'company'), data);
+        alert('Data imported successfully!');
+      } else {
+        alert('Invalid backup file format.');
+      }
+    } catch (err) {
+      console.error('Import failed:', err);
+      alert('Failed to import data. Please check the file format.');
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const handleSeedData = async () => {
     if (!window.confirm('This will add sample categories, suppliers, and products to your database. Continue?')) return;
     
@@ -64,6 +89,7 @@ export function Setting() {
       const cat1 = await addDoc(catRef, { name: 'Supplements' });
       const cat2 = await addDoc(catRef, { name: 'Skin Care' });
       const cat3 = await addDoc(catRef, { name: 'Vitamins' });
+      const cat4 = await addDoc(catRef, { name: 'Herbal Tea' });
 
       // 2. Seed Suppliers
       const supRef = collection(db, 'suppliers');
@@ -73,32 +99,67 @@ export function Setting() {
         phone: '09123456789', 
         email: 'contact@glowglobal.com' 
       });
+      const sup2 = await addDoc(supRef, { 
+        name: 'Nature Best Co.', 
+        contactPerson: 'Jane Smith', 
+        phone: '09987654321', 
+        email: 'sales@naturebest.com' 
+      });
 
       // 3. Seed Products
       const prodRef = collection(db, 'products');
-      await addDoc(prodRef, {
-        name: 'Vitamin C 1000mg',
-        categoryId: cat3.id,
-        supplierId: sup1.id,
-        landedCost: 15000,
-        sellingPrice: 25000,
-        margin: 10000,
-        stock: 50,
-        expiryDate: '2025-12-31',
-        purchaseDate: new Date().toISOString().split('T')[0]
-      });
+      const today = new Date().toISOString().split('T')[0];
+      
+      const sampleProducts = [
+        {
+          name: 'Vitamin C 1000mg',
+          categoryId: cat3.id,
+          supplierId: sup1.id,
+          landedCost: 15000,
+          sellingPrice: 25000,
+          margin: 10000,
+          stock: 50,
+          expiryDate: '2025-12-31',
+          purchaseDate: today
+        },
+        {
+          name: 'Hyaluronic Acid Serum',
+          categoryId: cat2.id,
+          supplierId: sup1.id,
+          landedCost: 12000,
+          sellingPrice: 22000,
+          margin: 10000,
+          stock: 30,
+          expiryDate: '2026-06-30',
+          purchaseDate: today
+        },
+        {
+          name: 'Organic Green Tea',
+          categoryId: cat4.id,
+          supplierId: sup2.id,
+          landedCost: 8000,
+          sellingPrice: 15000,
+          margin: 7000,
+          stock: 100,
+          expiryDate: '2025-08-15',
+          purchaseDate: today
+        },
+        {
+          name: 'Collagen Peptides',
+          categoryId: cat1.id,
+          supplierId: sup2.id,
+          landedCost: 35000,
+          sellingPrice: 55000,
+          margin: 20000,
+          stock: 15,
+          expiryDate: '2026-01-20',
+          purchaseDate: today
+        }
+      ];
 
-      await addDoc(prodRef, {
-        name: 'Hyaluronic Acid Serum',
-        categoryId: cat2.id,
-        supplierId: sup1.id,
-        landedCost: 12000,
-        sellingPrice: 22000,
-        margin: 10000,
-        stock: 30,
-        expiryDate: '2026-06-30',
-        purchaseDate: new Date().toISOString().split('T')[0]
-      });
+      for (const product of sampleProducts) {
+        await addDoc(prodRef, product);
+      }
 
       setSeedStatus('success');
       setTimeout(() => setSeedStatus('idle'), 3000);
@@ -155,18 +216,43 @@ export function Setting() {
           <Database className="w-6 h-6 text-slate-600" />
           Data Management
         </h2>
-        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 flex items-center justify-between">
-          <div>
-            <h3 className="font-bold text-slate-900">Backup Data</h3>
-            <p className="text-sm text-slate-500">Download your company settings and configuration.</p>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-900">Backup Data</h3>
+              <p className="text-sm text-slate-500">Download your settings.</p>
+            </div>
+            <button
+              onClick={handleBackup}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all shadow-sm"
+            >
+              <Download className="w-5 h-5" />
+              Download JSON
+            </button>
           </div>
-          <button
-            onClick={handleBackup}
-            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all shadow-sm"
-          >
-            <Download className="w-5 h-5" />
-            Download JSON
-          </button>
+
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
+            <div>
+              <h3 className="font-bold text-slate-900">Import Data</h3>
+              <p className="text-sm text-slate-500">Restore from backup.</p>
+            </div>
+            <input
+              type="file"
+              accept=".json"
+              className="hidden"
+              ref={fileInputRef}
+              onChange={handleImport}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isImporting}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-xl font-semibold hover:bg-slate-50 transition-all shadow-sm disabled:opacity-50"
+            >
+              <Upload className="w-5 h-5" />
+              {isImporting ? 'Importing...' : 'Upload JSON'}
+            </button>
+          </div>
         </div>
 
         <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex items-center justify-between">

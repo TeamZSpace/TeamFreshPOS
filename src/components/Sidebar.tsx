@@ -20,6 +20,7 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
     { name: 'Categories', icon: Tags, color: 'text-cyan-600 bg-cyan-50' },
     { name: 'CRM', icon: Users, color: 'text-blue-600 bg-blue-50' },
     { name: 'Supplier', icon: Truck, color: 'text-orange-600 bg-orange-50' },
+    { name: 'Report', icon: TrendingUp, color: 'text-indigo-600 bg-indigo-50' },
     { name: 'Setting', icon: Settings, color: 'text-slate-600 bg-slate-50' },
   ];
 

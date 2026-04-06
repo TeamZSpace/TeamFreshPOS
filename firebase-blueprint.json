@@ -1,0 +1,131 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "Inventory products for supplements and skin care.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Product name" },
+        "categoryId": { "type": "string", "description": "Reference to Category" },
+        "supplierId": { "type": "string", "description": "Reference to Supplier" },
+        "landedCost": { "type": "number", "description": "Cost including shipping" },
+        "sellingPrice": { "type": "number", "description": "Retail price" },
+        "margin": { "type": "number", "description": "Profit margin" },
+        "stock": { "type": "number", "description": "Current stock level" },
+        "expiryDate": { "type": "string", "format": "date", "description": "Product expiry date" },
+        "purchaseDate": { "type": "string", "format": "date", "description": "Last purchase date" }
+      },
+      "required": ["name", "landedCost", "sellingPrice", "stock"]
+    },
+    "Purchase": {
+      "title": "Purchase",
+      "description": "Inventory purchase records.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "productId": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "quantity": { "type": "number" },
+        "unitCost": { "type": "number" },
+        "shipping": { "type": "number" },
+        "totalAmount": { "type": "number" }
+      },
+      "required": ["date", "productId", "quantity", "totalAmount"]
+    },
+    "Sale": {
+      "title": "Sale",
+      "description": "Customer sales records.",
+      "type": "object",
+      "properties": {
+        "orderNumber": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "customerId": { "type": "string" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "quantity": { "type": "number" },
+              "price": { "type": "number" }
+            }
+          }
+        },
+        "paymentMethod": { "type": "string" },
+        "address": { "type": "string" },
+        "deliveryDate": { "type": "string", "format": "date" },
+        "totalAmount": { "type": "number" }
+      },
+      "required": ["orderNumber", "date", "customerId", "items", "totalAmount"]
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "CRM customer records.",
+      "type": "object",
+      "properties": {
+        "facebookName": { "type": "string" },
+        "orderName": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "points": { "type": "number", "description": "Loyalty points" },
+        "lastOrderDate": { "type": "string", "format": "date-time" }
+      },
+      "required": ["facebookName"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Product suppliers.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "contactPerson": { "type": "string" },
+        "phone": { "type": "string" },
+        "email": { "type": "string" },
+        "address": { "type": "string" }
+      },
+      "required": ["name"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product categories.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "parent": { "type": "string", "description": "Reference to parent Category ID" }
+      },
+      "required": ["name"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Business expenses.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date-time" },
+        "category": { "type": "string" },
+        "amount": { "type": "number" },
+        "description": { "type": "string" }
+      },
+      "required": ["date", "amount", "category"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Company settings.",
+      "type": "object",
+      "properties": {
+        "companyName": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/products": { "schema": "Product", "description": "Inventory products" },
+    "/purchases": { "schema": "Purchase", "description": "Purchase history" },
+    "/sales": { "schema": "Sale", "description": "Sales history" },
+    "/customers": { "schema": "Customer", "description": "CRM data" },
+    "/suppliers": { "schema": "Supplier", "description": "Suppliers list" },
+    "/categories": { "schema": "Category", "description": "Product categories" },
+    "/expenses": { "schema": "Expense", "description": "Business expenses" },
+    "/settings": { "schema": "Settings", "description": "App settings" }
+  }
+}

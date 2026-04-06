@@ -1,0 +1,204 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields:
+    //   - role: string (required, ['admin', 'user'])
+    //   - email: string (required)
+    //
+    // Collection: products
+    // Fields:
+    //   - name: string (required, 1-200 chars)
+    //   - categoryId: string (optional)
+    //   - supplierId: string (optional)
+    //   - landedCost: number (required, >= 0)
+    //   - sellingPrice: number (required, >= 0)
+    //   - stock: number (required)
+    //   - createdAt: timestamp (immutable)
+    //
+    // Collection: sales
+    // Fields:
+    //   - orderNumber: string (required)
+    //   - date: string (required, ISO 8601)
+    //   - customerId: string (required)
+    //   - items: list (required, max 50 items)
+    //   - totalAmount: number (required, >= 0)
+    //   - subtotal: number (optional)
+    //   - codAmount: number (optional)
+    //
+    // Collection: purchases
+    // Fields:
+    //   - date: string (required)
+    //   - productId: string (required)
+    //   - quantity: number (required)
+    //   - totalAmount: number (required)
+    //
+    // Collection: customers
+    // Fields:
+    //   - facebookName: string (required, 1-100 chars)
+    //   - points: number (optional)
+    //
+    // Collection: suppliers
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //
+    // Collection: categories
+    // Fields:
+    //   - name: string (required, 1-100 chars)
+    //   - parent: string (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "diginestt2026@gmail.com" && request.auth.token.email_verified == true) ||
+          (request.auth.token.email == "myatbinance@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function isValidString(field, min, max) {
+      return request.resource.data[field] is string && 
+             request.resource.data[field].size() >= min && 
+             request.resource.data[field].size() <= max;
+    }
+
+    function isValidOptionalString(field, max) {
+      return !(field in request.resource.data) || 
+             (request.resource.data[field] is string && request.resource.data[field].size() <= max);
+    }
+
+    function isPositive(field) {
+      return request.resource.data[field] is number && request.resource.data[field] >= 0;
+    }
+
+    function isRecent(field) {
+      return request.resource.data[field] is timestamp && 
+             request.resource.data[field] > request.time - duration.value(5, 'm') &&
+             request.resource.data[field] <= request.time;
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidProduct(data) {
+      return hasRequiredFields(['name', 'landedCost', 'sellingPrice', 'stock']) &&
+             isValidString('name', 1, 200) &&
+             isPositive('landedCost') &&
+             isPositive('sellingPrice') &&
+             data.stock is number;
+    }
+
+    function isValidSale(data) {
+      return hasRequiredFields(['orderNumber', 'date', 'customerId', 'items', 'totalAmount']) &&
+             isValidString('orderNumber', 1, 50) &&
+             data.items is list && data.items.size() <= 50 &&
+             isPositive('totalAmount');
+    }
+
+    function isValidPurchase(data) {
+      return hasRequiredFields(['date', 'productId', 'quantity', 'totalAmount']) &&
+             data.quantity is number && isPositive('totalAmount');
+    }
+
+    function isValidCustomer(data) {
+      return hasRequiredFields(['facebookName']) &&
+             isValidString('facebookName', 1, 100);
+    }
+
+    function isValidExpense(data) {
+      return hasRequiredFields(['date', 'amount', 'category']) &&
+             isPositive('amount');
+    }
+
+    function isValidCategory(data) {
+      return hasRequiredFields(['name']) &&
+             isValidString('name', 1, 100);
+    }
+
+    function isValidSupplier(data) {
+      return hasRequiredFields(['name']) &&
+             isValidString('name', 1, 100);
+    }
+
+    // ===============================================================
+    // Match Rules
+    // ===============================================================
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+      allow write: if isAdmin(); // Only admins can manage roles
+    }
+
+    match /products/{productId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidProduct(request.resource.data);
+      allow update: if isAuthenticated() && isValidProduct(request.resource.data) && 
+                    (!('createdAt' in resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+      allow delete: if isAdmin();
+    }
+
+    match /purchases/{purchaseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidPurchase(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /sales/{saleId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidSale(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /customers/{customerId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidCustomer(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidSupplier(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /categories/{categoryId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidCategory(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidExpense(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

@@ -145,6 +145,13 @@ service cloud.firestore {
              isValidString('name', 1, 100);
     }
 
+    function isValidProductMaster(data) {
+      return hasRequiredFields(['name', 'productCode', 'type']) &&
+             isValidString('name', 1, 200) &&
+             isValidString('productCode', 1, 50) &&
+             data.type in ['Packing', 'Travel'];
+    }
+
     // ===============================================================
     // Match Rules
     // ===============================================================
@@ -204,7 +211,8 @@ service cloud.firestore {
 
     match /productMaster/{productId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidProductMaster(request.resource.data);
+      allow delete: if isAdmin();
     }
   }
 }

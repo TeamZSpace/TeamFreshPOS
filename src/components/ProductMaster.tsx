@@ -9,6 +9,7 @@ interface ProductDefinition {
   id: string;
   name: string;
   productCode: string;
+  type: 'Packing' | 'Travel';
   createdAt: any;
 }
 
@@ -25,6 +26,7 @@ export function ProductMaster() {
   const [formData, setFormData] = useState({
     name: '',
     productCode: '',
+    type: 'Packing' as 'Packing' | 'Travel',
   });
 
   useEffect(() => {
@@ -38,6 +40,25 @@ export function ProductMaster() {
 
     return () => unsub();
   }, []);
+
+  const generateNextCode = (type: 'Packing' | 'Travel') => {
+    const prefix = type === 'Packing' ? 'PC-' : 'PCT-';
+    const existingCodes = products
+      .filter(p => p.productCode.startsWith(prefix))
+      .map(p => {
+        const numPart = p.productCode.replace(prefix, '');
+        return parseInt(numPart, 10);
+      })
+      .filter(n => !isNaN(n));
+
+    const nextNum = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
+    return `${prefix}${nextNum.toString().padStart(4, '0')}`;
+  };
+
+  const handleTypeChange = (type: 'Packing' | 'Travel') => {
+    const nextCode = generateNextCode(type);
+    setFormData({ ...formData, type, productCode: nextCode });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,6 +107,7 @@ export function ProductMaster() {
     setFormData({
       name: product.name,
       productCode: product.productCode,
+      type: product.type || 'Packing',
     });
     setIsModalOpen(true);
   };
@@ -96,6 +118,7 @@ export function ProductMaster() {
     setFormData({
       name: '',
       productCode: '',
+      type: 'Packing',
     });
   };
 
@@ -115,7 +138,11 @@ export function ProductMaster() {
           <p className="text-slate-500 text-sm mt-1">Define product names and codes for reuse across the app.</p>
         </div>
         <button 
-          onClick={() => setIsModalOpen(true)}
+          onClick={() => {
+            const nextCode = generateNextCode('Packing');
+            setFormData({ ...formData, type: 'Packing', productCode: nextCode });
+            setIsModalOpen(true);
+          }}
           className="flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-rose-100 font-semibold"
         >
           <Plus className="w-5 h-5" />
@@ -142,6 +169,7 @@ export function ProductMaster() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Name</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Type</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Code</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Actions</th>
               </tr>
@@ -150,6 +178,13 @@ export function ProductMaster() {
               {filteredProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      product.type === 'Travel' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
+                    }`}>
+                      {product.type || 'Packing'}
+                    </span>
+                  </td>
                   <td className="px-6 py-4 text-slate-500 font-mono text-sm">{product.productCode}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -171,7 +206,7 @@ export function ProductMaster() {
               ))}
               {filteredProducts.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="px-6 py-12 text-center text-slate-500">
+                  <td colSpan={4} className="px-6 py-12 text-center text-slate-500">
                     No products found. Add your first master product to get started.
                   </td>
                 </tr>
@@ -194,6 +229,33 @@ export function ProductMaster() {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-slate-700">Product Type</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('Packing')}
+                    className={`px-4 py-2 rounded-xl border-2 transition-all font-semibold text-sm ${
+                      formData.type === 'Packing' 
+                        ? 'border-rose-500 bg-rose-50 text-rose-700' 
+                        : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
+                    }`}
+                  >
+                    Packing (PC)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleTypeChange('Travel')}
+                    className={`px-4 py-2 rounded-xl border-2 transition-all font-semibold text-sm ${
+                      formData.type === 'Travel' 
+                        ? 'border-rose-500 bg-rose-50 text-rose-700' 
+                        : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
+                    }`}
+                  >
+                    Travel Size (PCT)
+                  </button>
+                </div>
+              </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Product Name</label>
                 <input 
@@ -210,11 +272,12 @@ export function ProductMaster() {
                 <input 
                   required 
                   type="text" 
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none bg-slate-50 font-mono" 
                   value={formData.productCode} 
-                  onChange={(e) => setFormData({ ...formData, productCode: e.target.value })} 
-                  placeholder="e.g. GT-001"
+                  readOnly
+                  placeholder="Auto-generated"
                 />
+                <p className="text-[10px] text-slate-400 italic">Code is automatically generated based on type.</p>
               </div>
               <div className="pt-4 flex gap-3">
                 <button 

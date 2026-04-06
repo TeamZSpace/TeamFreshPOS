@@ -124,9 +124,10 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
-        "productCode": { "type": "string" }
+        "productCode": { "type": "string" },
+        "type": { "type": "string", "enum": ["Packing", "Travel"], "description": "Product type (Packing or Travel)" }
       },
-      "required": ["name", "productCode"]
+      "required": ["name", "productCode", "type"]
     }
   },
   "firestore": {

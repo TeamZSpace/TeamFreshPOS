@@ -58,7 +58,17 @@ export function Auth() {
             <div className="mb-6 p-4 bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl text-left">
               <p className="font-bold mb-1">Sign-in Error:</p>
               <p className="mb-2">{error}</p>
-              <p className="text-xs opacity-80">Tip: If you are using this app inside an iframe, try opening it in a new tab.</p>
+              <div className="mt-4 pt-4 border-t border-red-200">
+                <p className="font-bold text-xs uppercase mb-2">Debug Info for Firebase Console:</p>
+                <p className="text-xs mb-1">Current Domain to Authorize:</p>
+                <code className="block p-2 bg-white rounded border border-red-100 font-mono text-[10px] break-all select-all">
+                  {window.location.hostname}
+                </code>
+                <p className="text-[10px] mt-2 opacity-80 italic">
+                  Copy the domain above and add it to <b>Authentication &gt; Settings &gt; Authorized domains</b> in your Firebase Console.
+                </p>
+              </div>
+              <p className="text-xs mt-4 opacity-80">Tip: If you are using this app inside an iframe, try opening it in a new tab.</p>
             </div>
           )}
 

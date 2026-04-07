@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, AlertCircle, Calendar, Package, AlertTriangle } from 'lucide-react';
-import { cn, handleFirestoreError, OperationType, formatMMK } from '../lib/utils';
+import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, AlertCircle, Calendar, Package, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { cn, handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -187,6 +187,13 @@ export function Inventory() {
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'name', direction: 'asc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-indigo-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-indigo-600" />;
+  };
+
   return (
     <div className="space-y-6">
       {/* Products Box Summary */}
@@ -247,22 +254,40 @@ export function Inventory() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Code</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Brand</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Name</th>
+              <th onClick={() => requestSort('productCode')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Product Code{getSortIcon('productCode')}</div>
+              </th>
+              <th onClick={() => requestSort('brand')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Brand{getSortIcon('brand')}</div>
+              </th>
+              <th onClick={() => requestSort('name')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Product Name{getSortIcon('name')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Category</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Supplier</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Landed Cost</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Selling</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Margin (%)</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Stock</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Expiry Date</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Purchase Date</th>
+              <th onClick={() => requestSort('landedCost')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Landed Cost{getSortIcon('landedCost')}</div>
+              </th>
+              <th onClick={() => requestSort('sellingPrice')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Selling{getSortIcon('sellingPrice')}</div>
+              </th>
+              <th onClick={() => requestSort('margin')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Margin (%){getSortIcon('margin')}</div>
+              </th>
+              <th onClick={() => requestSort('stock')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Stock{getSortIcon('stock')}</div>
+              </th>
+              <th onClick={() => requestSort('expiryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Expiry Date{getSortIcon('expiryDate')}</div>
+              </th>
+              <th onClick={() => requestSort('purchaseDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Purchase Date{getSortIcon('purchaseDate')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredProducts.map((product) => {
+            {sortedProducts.map((product) => {
               const category = categories.find(c => c.id === product.categoryId);
               const parentCategory = category?.parent ? categories.find(c => c.id === category.parent) : null;
               const categoryDisplay = category 

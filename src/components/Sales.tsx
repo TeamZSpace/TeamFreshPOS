@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, runTransaction, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle } from 'lucide-react';
-import { cn, handleFirestoreError, OperationType, formatMMK, myanmarToEnglishNumerals } from '../lib/utils';
+import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { cn, handleFirestoreError, OperationType, formatMMK, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -17,8 +17,9 @@ interface Sale {
   address: string;
   deliveryDate: string;
   subtotal: number;
-  codAmount: number;
+  deliveryFees: number;
   totalAmount: number;
+  note?: string;
 }
 
 interface Product {
@@ -55,6 +56,7 @@ export function Sales() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; sale: Sale | null }>({
@@ -70,7 +72,8 @@ export function Sales() {
     address: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     deliveryDate: format(new Date(), 'yyyy-MM-dd'),
-    codAmount: 0,
+    deliveryFees: 0,
+    note: '',
     items: [] as { productId: string; name: string; quantity: number; price: number }[],
   });
   const [productSearch, setProductSearch] = useState('');
@@ -150,6 +153,7 @@ export function Sales() {
 
   const downloadOrderNote = (saleData: any) => {
     const itemsText = saleData.items.map((item: any) => `- ${item.name} x ${item.quantity} (${formatMMK(item.price)})`).join('\n');
+    const noteText = saleData.note ? `\nNOTE:\n${saleData.note}\n` : '';
     const note = `
 ORDER NOTE
 -----------
@@ -160,13 +164,13 @@ Phone: ${formData.phone}
 Address: ${saleData.address}
 Payment: ${saleData.paymentMethod}
 Delivery Date: ${saleData.deliveryDate}
-
+${noteText}
 ITEMS:
 ${itemsText}
 
-Subtotal: ${formatMMK(saleData.subtotal)}
-COD/Shipping: ${formatMMK(saleData.codAmount)}
-TOTAL: ${formatMMK(saleData.totalAmount)}
+Product Sales Total: ${formatMMK(saleData.subtotal)}
+Delivery Fees: ${formatMMK(saleData.deliveryFees)}
+TOTAL AMOUNT: ${formatMMK(saleData.totalAmount)}
 -----------
 Thank you for your order!
     `.trim();
@@ -185,30 +189,61 @@ Thank you for your order!
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (formData.items.length === 0) return alert('Please add at least one item');
+    if (isSubmitting) return;
 
+    setIsSubmitting(true);
     try {
       const subtotal = formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const totalAmount = subtotal + formData.codAmount;
+      const totalAmount = subtotal + formData.deliveryFees;
       const pointsToAdd = Math.floor(subtotal / 100000) * 30;
       const orderNumber = editingSale ? editingSale.orderNumber : await generateOrderNumber();
       const englishPhone = myanmarToEnglishNumerals(formData.phone);
 
+      // 1. Handle Customer (CRM) - Query outside transaction
+      let customerId = '';
+      let existingCustomerData: any = null;
+      const customerQuery = query(collection(db, 'customers'), where('facebookName', '==', formData.facebookName));
+      const customerSnap = await getDocs(customerQuery);
+      
+      if (!customerSnap.empty) {
+        const customerDoc = customerSnap.docs[0];
+        customerId = customerDoc.id;
+        existingCustomerData = customerDoc.data();
+      }
+
       await runTransaction(db, async (transaction) => {
-        // 1. Handle Customer (CRM)
-        let customerId = '';
-        const customerQuery = query(collection(db, 'customers'), where('facebookName', '==', formData.facebookName));
-        const customerSnap = await getDocs(customerQuery);
+        // 1. READS FIRST
+        const productDocs: { [id: string]: any } = {};
         
-        if (!customerSnap.empty) {
-          const customerDoc = customerSnap.docs[0];
-          customerId = customerDoc.id;
-          const currentPoints = customerDoc.data().points || 0;
-          
-          // If editing, we should ideally adjust points, but for simplicity we add new ones
-          // A better way would be to subtract old points and add new ones
+        // Get all unique product IDs involved
+        const productIds = new Set<string>();
+        if (editingSale) {
+          editingSale.items.forEach(item => productIds.add(item.productId));
+        }
+        formData.items.forEach(item => productIds.add(item.productId));
+
+        // Perform all gets
+        for (const pid of productIds) {
+          const pRef = doc(db, 'products', pid);
+          const pDoc = await transaction.get(pRef);
+          if (pDoc.exists()) {
+            productDocs[pid] = pDoc.data();
+          } else {
+            // If it's in formData.items, it MUST exist
+            if (formData.items.some(item => item.productId === pid)) {
+              throw new Error(`Product not found: ${pid}`);
+            }
+          }
+        }
+
+        // 2. WRITES SECOND
+        
+        // Handle Customer (CRM)
+        if (customerId && existingCustomerData) {
+          const currentPoints = existingCustomerData.points || 0;
           let finalPoints = currentPoints + pointsToAdd;
           if (editingSale) {
-            const oldSubtotal = editingSale.subtotal || editingSale.totalAmount; // Fallback for legacy records
+            const oldSubtotal = editingSale.subtotal || editingSale.totalAmount;
             const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
             finalPoints = currentPoints - oldPoints + pointsToAdd;
           }
@@ -234,27 +269,30 @@ Thank you for your order!
           });
         }
 
-        // 2. Update Product Stocks
+        // Update Product Stocks
+        // First revert old stocks if editing
         if (editingSale) {
-          // Revert old stocks
           for (const item of editingSale.items) {
-            const pRef = doc(db, 'products', item.productId);
-            const pDoc = await transaction.get(pRef);
-            if (pDoc.exists()) {
-              transaction.update(pRef, { stock: pDoc.data().stock + item.quantity });
+            if (productDocs[item.productId]) {
+              const currentStock = productDocs[item.productId].stock;
+              const newStock = currentStock + item.quantity;
+              transaction.update(doc(db, 'products', item.productId), { stock: newStock });
+              productDocs[item.productId].stock = newStock; // Update local copy for next loop
             }
           }
         }
 
+        // Then subtract new stocks
         for (const item of formData.items) {
-          const productRef = doc(db, 'products', item.productId);
-          const productDoc = await transaction.get(productRef);
-          if (!productDoc.exists()) throw new Error(`Product ${item.name} not found`);
-          const currentStock = productDoc.data().stock;
-          transaction.update(productRef, { stock: currentStock - item.quantity });
+          if (productDocs[item.productId]) {
+            const currentStock = productDocs[item.productId].stock;
+            const newStock = currentStock - item.quantity;
+            transaction.update(doc(db, 'products', item.productId), { stock: newStock });
+            productDocs[item.productId].stock = newStock;
+          }
         }
 
-        // 3. Add/Update Sale Record
+        // Add/Update Sale Record
         const saleRef = editingSale ? doc(db, 'sales', editingSale.id) : doc(collection(db, 'sales'));
         const saleData = {
           orderNumber,
@@ -266,8 +304,9 @@ Thank you for your order!
           address: formData.address,
           deliveryDate: formData.deliveryDate,
           subtotal,
-          codAmount: formData.codAmount,
+          deliveryFees: formData.deliveryFees,
           totalAmount,
+          note: formData.note,
           updatedAt: serverTimestamp(),
         };
         
@@ -289,13 +328,16 @@ Thank you for your order!
         address: formData.address,
         deliveryDate: formData.deliveryDate,
         subtotal,
-        codAmount: formData.codAmount,
-        totalAmount
+        deliveryFees: formData.deliveryFees,
+        totalAmount,
+        note: formData.note
       });
 
       closeModal();
     } catch (err) {
       handleFirestoreError(err, editingSale ? OperationType.UPDATE : OperationType.CREATE, 'sales');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -310,7 +352,8 @@ Thank you for your order!
       address: sale.address,
       date: sale.date.split('T')[0],
       deliveryDate: sale.deliveryDate,
-      codAmount: sale.codAmount || 0,
+      deliveryFees: sale.deliveryFees || 0,
+      note: sale.note || '',
       items: sale.items,
     });
     setIsModalOpen(true);
@@ -327,7 +370,8 @@ Thank you for your order!
       address: '', 
       date: format(new Date(), 'yyyy-MM-dd'), 
       deliveryDate: format(new Date(), 'yyyy-MM-dd'), 
-      codAmount: 0,
+      deliveryFees: 0,
+      note: '',
       items: [] 
     });
   };
@@ -335,22 +379,37 @@ Thank you for your order!
   const handleDelete = async (sale: Sale) => {
     try {
       await runTransaction(db, async (transaction) => {
-        // Revert stock
+        // 1. READS FIRST
+        const productDocs: { [id: string]: any } = {};
         for (const item of sale.items) {
-          const pRef = doc(db, 'products', item.productId);
-          const pDoc = await transaction.get(pRef);
-          if (pDoc.exists()) {
-            transaction.update(pRef, { stock: pDoc.data().stock + item.quantity });
+          if (!productDocs[item.productId]) {
+            const pRef = doc(db, 'products', item.productId);
+            const pDoc = await transaction.get(pRef);
+            if (pDoc.exists()) {
+              productDocs[item.productId] = pDoc.data();
+            }
           }
         }
-        // Revert points
+
         const cRef = doc(db, 'customers', sale.customerId);
         const cDoc = await transaction.get(cRef);
+
+        // 2. WRITES SECOND
+        for (const item of sale.items) {
+          if (productDocs[item.productId]) {
+            const currentStock = productDocs[item.productId].stock;
+            const newStock = currentStock + item.quantity;
+            transaction.update(doc(db, 'products', item.productId), { stock: newStock });
+            productDocs[item.productId].stock = newStock; // Update local copy if same product appears twice
+          }
+        }
+
         if (cDoc.exists()) {
           const subtotal = sale.subtotal || sale.totalAmount;
           const pointsToSubtract = Math.floor(subtotal / 100000) * 30;
           transaction.update(cRef, { points: (cDoc.data().points || 0) - pointsToSubtract });
         }
+
         transaction.delete(doc(db, 'sales', sale.id));
       });
     } catch (err) {
@@ -362,6 +421,13 @@ Thank you for your order!
     s.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'date', direction: 'desc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-rose-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-rose-600" />;
+  };
 
   return (
     <div className="space-y-6">
@@ -389,18 +455,30 @@ Thank you for your order!
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Order #</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Date</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Customer</th>
+              <th onClick={() => requestSort('orderNumber')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Order #{getSortIcon('orderNumber')}</div>
+              </th>
+              <th onClick={() => requestSort('date')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Date{getSortIcon('date')}</div>
+              </th>
+              <th onClick={() => requestSort('customerName')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Customer{getSortIcon('customerName')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Items</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Payment</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Delivery</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Total</th>
+              <th onClick={() => requestSort('paymentMethod')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Payment{getSortIcon('paymentMethod')}</div>
+              </th>
+              <th onClick={() => requestSort('deliveryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Delivery{getSortIcon('deliveryDate')}</div>
+              </th>
+              <th onClick={() => requestSort('totalAmount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Total{getSortIcon('totalAmount')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredSales.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((sale) => (
+            {sortedSales.map((sale) => (
               <tr key={sale.id} className="hover:bg-slate-50 transition-colors group">
                 <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500">{sale.orderNumber}</td>
                 <td className="px-6 py-4 text-slate-600 text-xs">{format(new Date(sale.date), 'MMM d, yyyy')}</td>
@@ -433,8 +511,8 @@ Thank you for your order!
                 <td className="px-6 py-4 text-right font-bold text-slate-900">
                   <div className="flex flex-col items-end">
                     <span>{formatMMK(sale.totalAmount)}</span>
-                    {sale.codAmount > 0 && (
-                      <span className="text-[10px] text-slate-400 font-normal">Incl. {formatMMK(sale.codAmount)} COD</span>
+                    {sale.deliveryFees > 0 && (
+                      <span className="text-[10px] text-slate-400 font-normal">Incl. {formatMMK(sale.deliveryFees)} Delivery Fees</span>
                     )}
                   </div>
                 </td>
@@ -527,12 +605,22 @@ Thank you for your order!
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">COD / Shipping Amount (MMK)</label>
+                    <label className="text-xs font-semibold text-slate-600">Delivery Fees (MMK)</label>
                     <input 
                       type="number" 
                       className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
-                      value={formData.codAmount} 
-                      onChange={e => setFormData({...formData, codAmount: parseFloat(e.target.value) || 0})} 
+                      value={formData.deliveryFees} 
+                      onChange={e => setFormData({...formData, deliveryFees: parseFloat(e.target.value) || 0})} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-slate-600">Note</label>
+                    <textarea 
+                      rows={2} 
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none resize-none" 
+                      placeholder="Add order notes..."
+                      value={formData.note} 
+                      onChange={e => setFormData({...formData, note: e.target.value})} 
                     />
                   </div>
                 </div>
@@ -634,21 +722,21 @@ Thank you for your order!
 
                   <div className="pt-4 border-t border-slate-100 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">Subtotal:</span>
-                      <span className="text-slate-700 font-semibold">
+                      <span className="text-slate-500 font-semibold text-rose-600">Product Sales Total:</span>
+                      <span className="text-rose-600 font-bold">
                         {formatMMK(formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0))}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500">COD Amount:</span>
+                      <span className="text-slate-500">Delivery Fees:</span>
                       <span className="text-slate-700 font-semibold">
-                        {formatMMK(formData.codAmount)}
+                        {formatMMK(formData.deliveryFees)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <span className="text-slate-500 font-bold">Total Amount:</span>
+                      <span className="text-slate-500 font-bold">Total Amount (Customer Pays):</span>
                       <span className="text-2xl font-black text-slate-900">
-                        {formatMMK(formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + formData.codAmount)}
+                        {formatMMK(formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + formData.deliveryFees)}
                       </span>
                     </div>
                   </div>
@@ -656,9 +744,27 @@ Thank you for your order!
               </div>
 
               <div className="lg:col-span-2 flex justify-end gap-3 mt-4">
-                <button type="button" onClick={closeModal} className="px-6 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
-                <button type="submit" className="px-10 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-100">
-                  {editingSale ? 'Update Order' : 'Complete Order'}
+                <button 
+                  type="button" 
+                  onClick={closeModal} 
+                  disabled={isSubmitting}
+                  className="px-6 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={isSubmitting}
+                  className="px-10 py-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    editingSale ? 'Update Order' : 'Complete Order'
+                  )}
                 </button>
               </div>
             </form>

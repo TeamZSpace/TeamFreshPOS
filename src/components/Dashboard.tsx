@@ -9,7 +9,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 interface Sale {
   id: string;
   subtotal?: number;
-  codAmount?: number;
+  deliveryFees?: number;
   totalAmount: number;
   date: string;
   items: { productId: string; quantity: number; price: number }[];
@@ -58,7 +58,7 @@ export function Dashboard() {
   }, []);
 
   // Calculations
-  const totalSales = sales.reduce((sum, s) => sum + (s.subtotal || (s.totalAmount - (s.codAmount || 0))), 0);
+  const totalSales = sales.reduce((sum, s) => sum + (s.subtotal || (s.totalAmount - (s.deliveryFees || 0))), 0);
   const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
   
   const totalCOGS = sales.reduce((sum, sale) => {
@@ -78,7 +78,7 @@ export function Dashboard() {
     const date = subDays(new Date(), i);
     const dateStr = format(date, 'yyyy-MM-dd');
     const daySales = sales.filter(s => format(new Date(s.date), 'yyyy-MM-dd') === dateStr)
-      .reduce((sum, s) => sum + (s.subtotal || (s.totalAmount - (s.codAmount || 0))), 0);
+      .reduce((sum, s) => sum + (s.subtotal || (s.totalAmount - (s.deliveryFees || 0))), 0);
     return { name: format(date, 'MMM d'), sales: daySales };
   }).reverse();
 

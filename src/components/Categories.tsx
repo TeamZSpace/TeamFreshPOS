@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { Plus, Tags, Trash2, Layers, Edit2, AlertTriangle } from 'lucide-react';
-import { handleFirestoreError, OperationType } from '../lib/utils';
+import { Plus, Tags, Trash2, Layers, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react';
+import { handleFirestoreError, OperationType, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Category {
@@ -77,7 +77,14 @@ export function Categories() {
     }
   };
 
-  const mainCategories = categories.filter(c => !c.parent);
+  const { items: sortedCategories, requestSort, sortConfig } = useSortableData(categories, { key: 'name', direction: 'asc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-emerald-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-emerald-600" />;
+  };
+
+  const mainCategories = sortedCategories.filter(c => !c.parent);
 
   return (
     <div className="space-y-6">
@@ -93,6 +100,28 @@ export function Categories() {
           <Plus className="w-5 h-5" />
           New Category
         </button>
+      </div>
+
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sort By:</span>
+            <select 
+              className="bg-transparent text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+              value={sortConfig?.key || ''}
+              onChange={(e) => requestSort(e.target.value)}
+            >
+              <option value="name">Name</option>
+            </select>
+            <button 
+              onClick={() => requestSort(sortConfig?.key || 'name')}
+              className="p-1 hover:bg-slate-200 rounded transition-colors"
+            >
+              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-emerald-600" /> : <ArrowDown className="w-4 h-4 text-emerald-600" />}
+            </button>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -132,7 +161,7 @@ export function Categories() {
 
             <div className="space-y-2 flex-1">
               <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Sub-categories</p>
-              {categories.filter(c => c.parent === main.id).map(sub => (
+              {sortedCategories.filter(c => c.parent === main.id).map(sub => (
                 <div key={sub.id} className="flex items-center justify-between p-2 bg-slate-50 rounded-lg group/sub">
                   <span className="text-sm text-slate-600">{sub.name}</span>
                   <div className="flex gap-1">
@@ -161,7 +190,7 @@ export function Categories() {
                   </div>
                 </div>
               ))}
-              {categories.filter(c => c.parent === main.id).length === 0 && (
+              {sortedCategories.filter(c => c.parent === main.id).length === 0 && (
                 <p className="text-xs text-slate-400 italic">No sub-categories</p>
               )}
             </div>

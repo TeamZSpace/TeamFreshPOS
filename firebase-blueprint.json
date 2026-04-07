@@ -137,6 +137,20 @@
         "type": { "type": "string", "enum": ["Packing", "Travel"], "description": "Product type (Packing or Travel)" }
       },
       "required": ["name", "productCode", "type"]
+    },
+    "Backup": {
+      "title": "Backup",
+      "description": "Database backup records.",
+      "type": "object",
+      "properties": {
+        "timestamp": { "type": "string", "format": "date-time" },
+        "data": { "type": "object", "description": "Serialized backup data" },
+        "totalRecords": { "type": "number" },
+        "collections": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["success", "failed"] },
+        "isAuto": { "type": "boolean" }
+      },
+      "required": ["timestamp", "data", "status"]
     }
   },
   "firestore": {
@@ -148,6 +162,7 @@
     "/categories": { "schema": "Category", "description": "Product categories" },
     "/expenses": { "schema": "Expense", "description": "Business expenses" },
     "/settings": { "schema": "Settings", "description": "App settings" },
-    "/productMaster": { "schema": "ProductMaster", "description": "Master product list" }
+    "/productMaster": { "schema": "ProductMaster", "description": "Master product list" },
+    "/backups": { "schema": "Backup", "description": "Database backups" }
   }
 }

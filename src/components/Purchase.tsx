@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, runTransaction, deleteDoc } from 'firebase/firestore';
-import { Plus, ShoppingCart, Calendar, Truck, DollarSign, Package, Edit2, Trash2, AlertTriangle, Search } from 'lucide-react';
-import { handleFirestoreError, OperationType, formatMMK } from '../lib/utils';
+import { Plus, ShoppingCart, Calendar, Truck, DollarSign, Package, Edit2, Trash2, AlertTriangle, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -171,6 +171,13 @@ export function Purchase() {
     }
   };
 
+  const { items: sortedPurchases, requestSort, sortConfig } = useSortableData(purchases, { key: 'date', direction: 'desc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-amber-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-amber-600" />;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -191,18 +198,28 @@ export function Purchase() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Date</th>
+              <th onClick={() => requestSort('date')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Date{getSortIcon('date')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Supplier</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Quantity</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Unit Cost</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Shipping</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Total</th>
+              <th onClick={() => requestSort('quantity')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Quantity{getSortIcon('quantity')}</div>
+              </th>
+              <th onClick={() => requestSort('unitCost')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Unit Cost{getSortIcon('unitCost')}</div>
+              </th>
+              <th onClick={() => requestSort('shipping')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Shipping{getSortIcon('shipping')}</div>
+              </th>
+              <th onClick={() => requestSort('totalAmount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Total{getSortIcon('totalAmount')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {purchases.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((purchase) => {
+            {sortedPurchases.map((purchase) => {
               const product = products.find(p => p.id === purchase.productId);
               const supplier = suppliers.find(s => s.id === purchase.supplierId);
               return (

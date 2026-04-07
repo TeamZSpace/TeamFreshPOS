@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { Plus, Truck, Trash2, Phone, Mail, MapPin, Edit2, AlertTriangle } from 'lucide-react';
-import { handleFirestoreError, OperationType, myanmarToEnglishNumerals } from '../lib/utils';
+import { Plus, Truck, Trash2, Phone, Mail, MapPin, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react';
+import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Supplier {
@@ -87,6 +87,13 @@ export function Supplier() {
     }
   };
 
+  const { items: sortedSuppliers, requestSort, sortConfig } = useSortableData(suppliers, { key: 'name', direction: 'asc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-indigo-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-indigo-600" />;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -103,8 +110,31 @@ export function Supplier() {
         </button>
       </div>
 
+      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2">
+            <Filter className="w-4 h-4 text-slate-400" />
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Sort By:</span>
+            <select 
+              className="bg-transparent text-sm font-semibold text-slate-700 outline-none cursor-pointer"
+              value={sortConfig?.key || ''}
+              onChange={(e) => requestSort(e.target.value)}
+            >
+              <option value="name">Name</option>
+              <option value="contactPerson">Contact Person</option>
+            </select>
+            <button 
+              onClick={() => requestSort(sortConfig?.key || 'name')}
+              className="p-1 hover:bg-slate-200 rounded transition-colors"
+            >
+              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-indigo-600" /> : <ArrowDown className="w-4 h-4 text-indigo-600" />}
+            </button>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {suppliers.map((supplier) => (
+        {sortedSuppliers.map((supplier) => (
           <div key={supplier.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group relative">
             <div className="absolute top-4 right-4 flex gap-1">
               <button 

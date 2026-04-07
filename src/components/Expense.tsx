@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, serverTimestamp, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { Plus, Receipt, Trash2, Calendar, DollarSign, Tag, Edit2, AlertTriangle } from 'lucide-react';
-import { handleFirestoreError, OperationType, formatMMK } from '../lib/utils';
+import { Plus, Receipt, Trash2, Calendar, DollarSign, Tag, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 
@@ -83,6 +83,13 @@ export function Expense() {
     }
   };
 
+  const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses, { key: 'date', direction: 'desc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-purple-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-purple-600" />;
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -110,15 +117,23 @@ export function Expense() {
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Date</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Category</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Description</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Amount</th>
+              <th onClick={() => requestSort('date')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Date{getSortIcon('date')}</div>
+              </th>
+              <th onClick={() => requestSort('category')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Category{getSortIcon('category')}</div>
+              </th>
+              <th onClick={() => requestSort('description')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Description{getSortIcon('description')}</div>
+              </th>
+              <th onClick={() => requestSort('amount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Amount{getSortIcon('amount')}</div>
+              </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {expenses.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((expense) => (
+            {sortedExpenses.map((expense) => (
               <tr key={expense.id} className="hover:bg-slate-50 transition-colors group">
                 <td className="px-6 py-4 text-slate-600 text-xs">{format(new Date(expense.date), 'MMM d, yyyy')}</td>
                 <td className="px-6 py-4">

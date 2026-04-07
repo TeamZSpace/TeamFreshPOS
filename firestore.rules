@@ -28,7 +28,8 @@ service cloud.firestore {
     //   - items: list (required, max 50 items)
     //   - totalAmount: number (required, >= 0)
     //   - subtotal: number (optional)
-    //   - codAmount: number (optional)
+    //   - deliveryFees: number (optional)
+    //   - note: string (optional)
     //
     // Collection: purchases
     // Fields:
@@ -161,6 +162,11 @@ service cloud.firestore {
              data.type in ['Packing', 'Travel'];
     }
 
+    function isValidBackup(data) {
+      return hasRequiredFields(['timestamp', 'data', 'status']) &&
+             data.status in ['success', 'failed'];
+    }
+
     // ===============================================================
     // Match Rules
     // ===============================================================
@@ -221,6 +227,13 @@ service cloud.firestore {
     match /productMaster/{productId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && isValidProductMaster(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /backups/{backupId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidBackup(request.resource.data);
+      allow update: if false; // Backups should be immutable
       allow delete: if isAdmin();
     }
   }

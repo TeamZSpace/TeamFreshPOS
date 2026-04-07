@@ -63,7 +63,7 @@ export function Report() {
   const currentMonthSales = sales.filter(s => isSameMonth(new Date(s.date), selectedMonth));
   const currentMonthExpenses = expenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
 
-  const totalRevenue = currentMonthSales.reduce((sum, s) => sum + s.totalAmount, 0);
+  const totalRevenue = currentMonthSales.reduce((sum, s) => sum + (s.subtotal || s.totalAmount), 0);
   const totalExpenses = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
 
   // Calculate Cost of Goods Sold (COGS)

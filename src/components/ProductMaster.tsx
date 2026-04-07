@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Plus, Edit2, Trash2, Search, ClipboardList, Package } from 'lucide-react';
-import { handleFirestoreError, OperationType } from '../lib/utils';
+import { Plus, Edit2, Trash2, Search, ClipboardList, Package, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { handleFirestoreError, OperationType, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
 
 interface ProductDefinition {
@@ -161,6 +161,13 @@ export function ProductMaster() {
     (p.brand && p.brand.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'name', direction: 'asc' });
+
+  const getSortIcon = (key: string) => {
+    if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-rose-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-rose-600" />;
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -202,15 +209,23 @@ export function ProductMaster() {
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Brand</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Full Product Name</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Type</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Code</th>
+                <th onClick={() => requestSort('brand')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                  <div className="flex items-center">Brand{getSortIcon('brand')}</div>
+                </th>
+                <th onClick={() => requestSort('name')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                  <div className="flex items-center">Full Product Name{getSortIcon('name')}</div>
+                </th>
+                <th onClick={() => requestSort('type')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                  <div className="flex items-center">Type{getSortIcon('type')}</div>
+                </th>
+                <th onClick={() => requestSort('productCode')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                  <div className="flex items-center">Product Code{getSortIcon('productCode')}</div>
+                </th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {filteredProducts.map((product) => (
+              {sortedProducts.map((product) => (
                 <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
                   <td className="px-6 py-4 text-slate-700">{product.name}</td>

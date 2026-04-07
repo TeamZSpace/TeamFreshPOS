@@ -15,9 +15,12 @@ import { Supplier } from './components/Supplier';
 import { Setting } from './components/Setting';
 import { Report } from './components/Report';
 import { ProductMaster } from './components/ProductMaster';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList } from 'lucide-react';
+import { Backup } from './components/Backup';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList, Database } from 'lucide-react';
+import { collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from './lib/utils';
 
-export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster';
+export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup';
 
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
@@ -37,6 +40,59 @@ export default function App() {
     // Close mobile menu when menu changes
     setIsMobileMenuOpen(false);
   }, [activeMenu]);
+
+  useEffect(() => {
+    // Auto-backup logic (every 5 hours)
+    if (user) {
+      const checkAndBackup = async () => {
+        try {
+          const q = query(collection(db, 'backups'), orderBy('timestamp', 'desc'), limit(1));
+          const snapshot = await getDocs(q);
+          let shouldBackup = false;
+          
+          if (snapshot.empty) {
+            shouldBackup = true;
+          } else {
+            const lastBackup = snapshot.docs[0].data();
+            const lastTime = lastBackup.timestamp?.toDate().getTime() || 0;
+            const fiveHoursInMs = 5 * 60 * 60 * 1000;
+            if (Date.now() - lastTime > fiveHoursInMs) {
+              shouldBackup = true;
+            }
+          }
+
+          if (shouldBackup) {
+            console.log('Starting automated 5-hour backup...');
+            const collectionsToBackup = ['products', 'productMaster', 'categories', 'suppliers', 'customers', 'sales', 'purchases', 'expenses'];
+            const backupData: any = {
+              timestamp: serverTimestamp(),
+              data: {},
+              totalRecords: 0,
+              collections: collectionsToBackup,
+              status: 'success',
+              isAuto: true
+            };
+
+            for (const colName of collectionsToBackup) {
+              const colSnapshot = await getDocs(collection(db, colName));
+              backupData.data[colName] = colSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+              backupData.totalRecords += colSnapshot.docs.length;
+            }
+
+            await addDoc(collection(db, 'backups'), backupData);
+            console.log('Automated backup completed.');
+          }
+        } catch (err) {
+          handleFirestoreError(err, OperationType.CREATE, 'backups');
+        }
+      };
+
+      // Run once on load, then every hour to check
+      checkAndBackup();
+      const interval = setInterval(checkAndBackup, 60 * 60 * 1000);
+      return () => clearInterval(interval);
+    }
+  }, [user]);
 
   if (!isAuthReady) {
     return (
@@ -66,6 +122,7 @@ export default function App() {
       case 'Setting': return <Setting />;
       case 'Report': return <Report />;
       case 'ProductMaster': return <ProductMaster />;
+      case 'Backup': return <Backup />;
       default: return <Dashboard />;
     }
   };
@@ -79,9 +136,9 @@ export default function App() {
           isOpen={isMobileMenuOpen} 
           onClose={() => setIsMobileMenuOpen(false)} 
         />
-        <main className="flex-1 overflow-y-auto h-screen p-4 sm:p-8">
-          <div className="max-w-7xl mx-auto">
-            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <main className="flex-1 overflow-y-auto h-screen p-2 sm:p-4">
+          <div className="w-full">
+            <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 px-4">
               <div className="flex items-center justify-between w-full sm:w-auto">
                 <div className="flex items-center gap-3 lg:hidden">
                   <button 
@@ -104,7 +161,7 @@ export default function App() {
               </div>
               <Auth />
             </header>
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[calc(100vh-12rem)] p-6">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[calc(100vh-12rem)] p-2 sm:p-4">
               {renderContent()}
             </div>
           </div>

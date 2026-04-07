@@ -73,6 +73,7 @@
         "phone": { "type": "string" },
         "address": { "type": "string" },
         "points": { "type": "number", "description": "Loyalty points" },
+        "orderCount": { "type": "number", "description": "Total number of orders" },
         "lastOrderDate": { "type": "string", "format": "date-time" }
       },
       "required": ["facebookName"]

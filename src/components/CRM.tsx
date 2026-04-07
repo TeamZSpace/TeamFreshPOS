@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Users, Search, Phone, MapPin, Calendar, Facebook, User, Award, Trash2, Edit2, Plus, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Calendar, Facebook, User, Award, Trash2, Edit2, Plus, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingBag } from 'lucide-react';
 import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
@@ -14,6 +14,7 @@ interface Customer {
   address: string;
   lastOrderDate: string;
   points: number;
+  orderCount?: number;
 }
 
 export function CRM() {
@@ -32,6 +33,7 @@ export function CRM() {
     phone: '',
     address: '',
     points: 0,
+    orderCount: 0,
   });
 
   useEffect(() => {
@@ -66,6 +68,7 @@ export function CRM() {
       phone: c.phone || '',
       address: c.address || '',
       points: c.points || 0,
+      orderCount: c.orderCount || 0,
     });
     setIsModalOpen(true);
   };
@@ -73,7 +76,7 @@ export function CRM() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingCustomer(null);
-    setFormData({ facebookName: '', orderName: '', phone: '', address: '', points: 0 });
+    setFormData({ facebookName: '', orderName: '', phone: '', address: '', points: 0, orderCount: 0 });
   };
 
   const handleDelete = async (id: string) => {
@@ -198,9 +201,15 @@ export function CRM() {
             </div>
 
             <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
-              <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-100">
-                <Award className="w-4 h-4" />
-                <span className="text-xs font-black">{customer.points || 0} Points</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-100 w-fit">
+                  <Award className="w-4 h-4" />
+                  <span className="text-xs font-black">{customer.points || 0} Points</span>
+                </div>
+                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100 w-fit">
+                  <ShoppingBag className="w-4 h-4" />
+                  <span className="text-xs font-black">{customer.orderCount || 0} Orders</span>
+                </div>
               </div>
               <button className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
                 View History →
@@ -232,9 +241,15 @@ export function CRM() {
                 <label className="text-sm font-semibold text-slate-700">Phone</label>
                 <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Points</label>
-                <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value)})} />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Points</label>
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Orders</label>
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.orderCount} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
+                </div>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Address</label>

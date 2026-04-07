@@ -48,6 +48,7 @@ interface Customer {
   phone: string;
   address: string;
   points: number;
+  orderCount?: number;
 }
 
 export function Sales() {
@@ -140,10 +141,10 @@ export function Sales() {
     });
   };
 
-  const generateOrderNumber = async () => {
-    const now = new Date();
-    const mm = String(now.getMonth() + 1).padStart(2, '0');
-    const yy = String(now.getFullYear()).slice(-2);
+  const generateOrderNumber = async (dateStr: string) => {
+    const saleDate = new Date(dateStr);
+    const mm = String(saleDate.getMonth() + 1).padStart(2, '0');
+    const yy = String(saleDate.getFullYear()).slice(-2);
     const prefix = `${mm}${yy}`;
     
     const monthSales = sales.filter(s => s.orderNumber?.startsWith(prefix));
@@ -196,7 +197,7 @@ Thank you for your order!
       const subtotal = formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
       const totalAmount = subtotal + formData.deliveryFees;
       const pointsToAdd = Math.floor(subtotal / 100000) * 30;
-      const orderNumber = editingSale ? editingSale.orderNumber : await generateOrderNumber();
+      const orderNumber = editingSale ? editingSale.orderNumber : await generateOrderNumber(formData.date);
       const englishPhone = myanmarToEnglishNumerals(formData.phone);
 
       // 1. Handle Customer (CRM) - Query outside transaction
@@ -241,11 +242,16 @@ Thank you for your order!
         // Handle Customer (CRM)
         if (customerId && existingCustomerData) {
           const currentPoints = existingCustomerData.points || 0;
+          const currentOrderCount = existingCustomerData.orderCount || 0;
           let finalPoints = currentPoints + pointsToAdd;
+          let finalOrderCount = currentOrderCount;
+
           if (editingSale) {
             const oldSubtotal = editingSale.subtotal || editingSale.totalAmount;
             const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
             finalPoints = currentPoints - oldPoints + pointsToAdd;
+          } else {
+            finalOrderCount = currentOrderCount + 1;
           }
 
           transaction.update(doc(db, 'customers', customerId), {
@@ -253,6 +259,7 @@ Thank you for your order!
             phone: englishPhone,
             address: formData.address,
             points: finalPoints,
+            orderCount: finalOrderCount,
             lastOrderDate: new Date().toISOString(),
           });
         } else {
@@ -264,6 +271,7 @@ Thank you for your order!
             phone: englishPhone,
             address: formData.address,
             points: pointsToAdd,
+            orderCount: 1,
             lastOrderDate: new Date().toISOString(),
             createdAt: serverTimestamp(),
           });
@@ -407,7 +415,13 @@ Thank you for your order!
         if (cDoc.exists()) {
           const subtotal = sale.subtotal || sale.totalAmount;
           const pointsToSubtract = Math.floor(subtotal / 100000) * 30;
-          transaction.update(cRef, { points: (cDoc.data().points || 0) - pointsToSubtract });
+          const currentPoints = cDoc.data().points || 0;
+          const currentOrderCount = cDoc.data().orderCount || 0;
+          
+          transaction.update(cRef, { 
+            points: Math.max(0, currentPoints - pointsToSubtract),
+            orderCount: Math.max(0, currentOrderCount - 1)
+          });
         }
 
         transaction.delete(doc(db, 'sales', sale.id));

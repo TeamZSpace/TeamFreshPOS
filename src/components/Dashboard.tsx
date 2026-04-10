@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
 import { handleFirestoreError, OperationType, cn, formatMMK } from '../lib/utils';
 import { format, subDays, isAfter } from 'date-fns';
@@ -30,10 +30,21 @@ interface Expense {
   date: string;
 }
 
+interface Purchase {
+  id: string;
+  totalAmount: number;
+}
+
+interface Settings {
+  openingCash: number;
+}
+
 export function Dashboard() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [settings, setSettings] = useState<Settings>({ openingCash: 20000000 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -49,11 +60,23 @@ export function Dashboard() {
       setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'expenses'));
 
+    const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
+      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'purchases'));
+
+    const unsubSettings = onSnapshot(doc(db, 'settings', 'company'), (snapshot) => {
+      if (snapshot.exists()) {
+        setSettings(snapshot.data() as Settings);
+      }
+    });
+
     setLoading(false);
     return () => {
       unsubSales();
       unsubProducts();
       unsubExpenses();
+      unsubPurchases();
+      unsubSettings();
     };
   }, []);
 
@@ -108,9 +131,9 @@ export function Dashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard title="Total Sales" value={totalSales} icon={TrendingUp} color="bg-indigo-50 text-indigo-600" />
         <StatCard title="COGS" value={totalCOGS} icon={Package} color="bg-slate-50 text-slate-600" />
-        <StatCard title="Gross Profit" value={grossProfit} icon={DollarSign} color="bg-emerald-50 text-emerald-600" />
-        <StatCard title="Expenses" value={totalExpenses} icon={TrendingDown} color="bg-rose-50 text-rose-600" />
+        <StatCard title="Total Expenses" value={totalExpenses} icon={TrendingDown} color="bg-rose-50 text-rose-600" />
         <StatCard title="Net Profit" value={netProfit} icon={ShoppingBag} color="bg-amber-50 text-amber-600" />
+        <StatCard title="Inventory Balance" value={inventoryValue} icon={Package} color="bg-slate-50 text-slate-600" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

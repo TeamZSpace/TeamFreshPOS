@@ -16,11 +16,12 @@ import { Setting } from './components/Setting';
 import { Report } from './components/Report';
 import { ProductMaster } from './components/ProductMaster';
 import { Backup } from './components/Backup';
+import { FinancialReport } from './components/FinancialReport';
 import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList, Database } from 'lucide-react';
 import { collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/utils';
 
-export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup';
+export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup' | 'FinancialReport';
 
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
@@ -123,6 +124,7 @@ export default function App() {
       case 'Report': return <Report />;
       case 'ProductMaster': return <ProductMaster />;
       case 'Backup': return <Backup />;
+      case 'FinancialReport': return <FinancialReport />;
       default: return <Dashboard />;
     }
   };

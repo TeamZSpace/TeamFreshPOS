@@ -79,7 +79,7 @@ export function Sales() {
   });
   const [productSearch, setProductSearch] = useState('');
 
-  const paymentMethods = ['Kpay', 'WavePay', 'AYAPay', 'uabpay', 'Bank', 'Cash'];
+  const paymentMethods = ['Kpay', 'WavePay', 'AYAPay', 'uabpay', 'Bank', 'Cash', 'Credit', 'COD (Cash on Deli)'];
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
@@ -595,7 +595,11 @@ Thank you for your order!
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Phone Number</label>
-                      <input className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} />
+                      <input 
+                        className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                        value={formData.phone} 
+                        onChange={e => setFormData({...formData, phone: myanmarToEnglishNumerals(e.target.value)})} 
+                      />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Sales Date</label>

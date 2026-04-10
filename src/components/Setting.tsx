@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db } from '../firebase';
 import { doc, onSnapshot, setDoc, collection, addDoc, writeBatch } from 'firebase/firestore';
-import { Settings, Building2, Phone, MapPin, Save, Database, Download, RefreshCw, CheckCircle2, Upload } from 'lucide-react';
-import { handleFirestoreError, OperationType } from '../lib/utils';
+import { Settings, Building2, Phone, MapPin, Save, Database, Download, RefreshCw, CheckCircle2, Upload, DollarSign } from 'lucide-react';
+import { handleFirestoreError, OperationType, myanmarToEnglishNumerals } from '../lib/utils';
 
 interface CompanySettings {
   companyName: string;
   address: string;
   phone: string;
+  openingCash: number;
 }
 
 export function Setting() {
@@ -15,6 +16,7 @@ export function Setting() {
     companyName: '',
     address: '',
     phone: '',
+    openingCash: 20000000,
   });
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
@@ -190,7 +192,12 @@ export function Setting() {
             <label className="text-sm font-semibold text-slate-700">Phone Number</label>
             <div className="relative">
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input type="text" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={settings.phone} onChange={e => setSettings({...settings, phone: e.target.value})} />
+              <input 
+                type="text" 
+                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                value={settings.phone} 
+                onChange={e => setSettings({...settings, phone: myanmarToEnglishNumerals(e.target.value)})} 
+              />
             </div>
           </div>
           <div className="space-y-1">
@@ -198,6 +205,13 @@ export function Setting() {
             <div className="relative">
               <MapPin className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
               <textarea rows={3} className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} />
+            </div>
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm font-semibold text-slate-700">Opening Cash (MMK)</label>
+            <div className="relative">
+              <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={settings.openingCash} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
             </div>
           </div>
           <button

@@ -11,7 +11,7 @@ export function myanmarToEnglishNumerals(str: string): string {
 }
 
 export function formatMMK(amount: number): string {
-  return new Intl.NumberFormat('my-MM', {
+  return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'MMK',
     minimumFractionDigits: 0,

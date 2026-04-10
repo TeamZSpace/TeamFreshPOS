@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, ChevronRight, Database } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, ChevronRight, Database, FileText } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { MenuType } from '../App';
 
@@ -17,12 +17,13 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
     { name: 'ProductMaster', icon: Tags, color: 'text-rose-600 bg-rose-50' },
     { name: 'Purchase', icon: ShoppingCart, color: 'text-amber-600 bg-amber-50' },
     { name: 'Sales', icon: TrendingUp, color: 'text-rose-600 bg-rose-50' },
+    { name: 'FinancialReport', icon: FileText, color: 'text-indigo-600 bg-indigo-50' },
     { name: 'Expense', icon: Receipt, color: 'text-purple-600 bg-purple-50' },
     { name: 'Categories', icon: Tags, color: 'text-cyan-600 bg-cyan-50' },
     { name: 'CRM', icon: Users, color: 'text-blue-600 bg-blue-50' },
     { name: 'Supplier', icon: Truck, color: 'text-orange-600 bg-orange-50' },
-    { name: 'Report', icon: TrendingUp, color: 'text-indigo-600 bg-indigo-50' },
     { name: 'Backup', icon: Database, color: 'text-indigo-600 bg-indigo-50' },
+    { name: 'Report', icon: TrendingUp, color: 'text-indigo-600 bg-indigo-50' },
     { name: 'Setting', icon: Settings, color: 'text-slate-600 bg-slate-50' },
   ];
 

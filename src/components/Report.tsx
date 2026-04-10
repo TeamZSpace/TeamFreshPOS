@@ -262,6 +262,61 @@ export function Report() {
         </div>
       </div>
       
+      {/* Product Sales Performance Table */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+          <h3 className="font-bold text-slate-900">Product Sales Performance</h3>
+          <span className="text-xs text-slate-500 italic">Actual sales and profit for {format(selectedMonth, 'MMMM yyyy')}</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Name</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Units Sold</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Total Revenue</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Total COGS</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Total Profit</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {products.map(product => {
+                const productSales = currentMonthSales.reduce((acc, sale) => {
+                  const item = sale.items.find(i => i.productId === product.id);
+                  if (item) {
+                    acc.units += item.quantity;
+                    acc.revenue += item.quantity * item.price;
+                    acc.cost += item.quantity * product.landedCost;
+                  }
+                  return acc;
+                }, { units: 0, revenue: 0, cost: 0 });
+
+                if (productSales.units === 0) return null;
+
+                const profit = productSales.revenue - productSales.cost;
+
+                return (
+                  <tr key={product.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
+                    <td className="px-6 py-4 text-center text-slate-600 font-bold">{productSales.units}</td>
+                    <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(productSales.revenue)}</td>
+                    <td className="px-6 py-4 text-right text-rose-600">{formatMMK(productSales.cost)}</td>
+                    <td className="px-6 py-4 text-right text-emerald-600 font-black">{formatMMK(profit)}</td>
+                  </tr>
+                );
+              }).filter(Boolean)}
+              {products.every(p => !currentMonthSales.some(s => s.items.some(i => i.productId === p.id))) && (
+                <tr>
+                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">
+                    No product sales recorded for this month.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {/* Centered Margin Table as requested */}
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">

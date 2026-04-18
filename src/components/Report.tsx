@@ -79,6 +79,32 @@ export function Report() {
   const netProfit = grossProfit - totalExpenses;
   const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
 
+  const monthlyProfitList = React.useMemo(() => {
+    return months.map(month => {
+      const monthSales = sales.filter(s => isSameMonth(new Date(s.date), month));
+      const monthExpenses = expenses.filter(e => isSameMonth(new Date(e.date), month));
+      
+      const rev = monthSales.reduce((sum, s) => sum + (s.subtotal || s.totalAmount), 0);
+      const exp = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const cost = monthSales.reduce((sum, sale) => {
+        return sum + sale.items.reduce((itemSum, item) => {
+          const product = products.find(p => p.id === item.productId);
+          return itemSum + ((product?.landedCost || 0) * item.quantity);
+        }, 0);
+      }, 0);
+      
+      const net = rev - cost - exp;
+      
+      return {
+        month,
+        revenue: rev,
+        expenses: exp,
+        cogs: cost,
+        netProfit: net
+      };
+    });
+  }, [sales, expenses, products, months]);
+
   const exportToExcel = () => {
     const reportData = [
       ['Monthly Financial Report', format(selectedMonth, 'MMMM yyyy')],
@@ -198,6 +224,49 @@ export function Report() {
           </div>
           <p className="text-sm text-slate-500 mb-1">Profitability</p>
           <p className="text-2xl font-black text-slate-900">{profitMargin.toFixed(1)}%</p>
+        </div>
+      </div>
+      
+      {/* Monthly Net Profit Check List */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+        <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-bold text-slate-900">Monthly Net Profit Check List</h3>
+          </div>
+          <span className="text-xs text-slate-500 italic">Historical performance for the last 12 months</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Month</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Revenue</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">COGS</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Expenses</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Net Profit</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {monthlyProfitList.map((item, idx) => (
+                <tr key={idx} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-4 font-bold text-slate-900">{format(item.month, 'MMMM yyyy')}</td>
+                  <td className="px-6 py-4 text-right text-slate-600">{formatMMK(item.revenue)}</td>
+                  <td className="px-6 py-4 text-right text-rose-500">-{formatMMK(item.cogs)}</td>
+                  <td className="px-6 py-4 text-right text-rose-500">-{formatMMK(item.expenses)}</td>
+                  <td className="px-6 py-4 text-right font-black">
+                    <span className={cn(
+                      "flex items-center justify-end gap-1",
+                      item.netProfit >= 0 ? "text-emerald-600" : "text-rose-600"
+                    )}>
+                      {item.netProfit >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
+                      {formatMMK(item.netProfit)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 

@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, serverTimestamp, deleteDoc, doc, updateDoc } from 'firebase/firestore';
 import { Plus, Receipt, Trash2, Calendar, DollarSign, Tag, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
-import { format } from 'date-fns';
+import { handleFirestoreError, OperationType, formatMMK, useSortableData, cn } from '../lib/utils';
+import { format, isSameMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 
 interface Expense {
@@ -16,6 +16,8 @@ interface Expense {
 
 export function Expense() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const [showAllTime, setShowAllTime] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null }>({
@@ -85,6 +87,17 @@ export function Expense() {
 
   const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses, { key: 'date', direction: 'desc' });
 
+  const monthlyExpenses = expenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
+  const currentMonthTotal = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const allTimeTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const months = eachMonthOfInterval({
+    start: subMonths(new Date(), 11),
+    end: new Date()
+  }).reverse();
+
+  const displayExpenses = showAllTime ? sortedExpenses : sortedExpenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
     return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-purple-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-purple-600" />;
@@ -92,25 +105,90 @@ export function Expense() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
           <Receipt className="w-6 h-6 text-purple-600" />
           Business Expenses
         </h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-all shadow-lg shadow-purple-100"
-        >
-          <Plus className="w-5 h-5" />
-          Add Expense
-        </button>
+        
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setShowAllTime(false)}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                !showAllTime ? "bg-white text-purple-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Monthly
+            </button>
+            <button
+              onClick={() => setShowAllTime(true)}
+              className={cn(
+                "px-4 py-1.5 rounded-lg text-xs font-bold transition-all",
+                showAllTime ? "bg-white text-purple-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              All Time
+            </button>
+          </div>
+
+          {!showAllTime && (
+            <select 
+              className="px-3 py-1.5 bg-white border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 focus:ring-2 focus:ring-purple-500 outline-none shadow-sm"
+              value={selectedMonth.toISOString()}
+              onChange={(e) => setSelectedMonth(new Date(e.target.value))}
+            >
+              {months.map(m => (
+                <option key={m.toISOString()} value={m.toISOString()}>
+                  {format(m, 'MMMM yyyy')}
+                </option>
+              ))}
+            </select>
+          )}
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-xl font-semibold hover:bg-purple-700 transition-all shadow-lg shadow-purple-100"
+          >
+            <Plus className="w-5 h-5" />
+            Add Expense
+          </button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-purple-50 p-6 rounded-2xl border border-purple-100">
-          <p className="text-sm font-semibold text-purple-600 uppercase tracking-wider mb-1">Total Expenses</p>
-          <p className="text-2xl font-black text-purple-900">{formatMMK(expenses.reduce((sum, e) => sum + e.amount, 0))}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="bg-purple-600 p-6 rounded-2xl shadow-lg shadow-purple-100 text-white">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs font-bold uppercase tracking-widest opacity-80">
+              {showAllTime ? "All Time Total" : `${format(selectedMonth, 'MMMM')} Total`}
+            </p>
+            <DollarSign className="w-5 h-5 opacity-80" />
+          </div>
+          <p className="text-3xl font-black">{formatMMK(showAllTime ? allTimeTotal : currentMonthTotal)}</p>
         </div>
+
+        {!showAllTime && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Transaction Count</p>
+              <Receipt className="w-5 h-5 text-purple-600" />
+            </div>
+            <p className="text-3xl font-black text-slate-900">{monthlyExpenses.length}</p>
+            <p className="text-xs text-slate-500 mt-1">Expenses in {format(selectedMonth, 'MMM')}</p>
+          </div>
+        )}
+
+        {showAllTime && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm text-slate-900">
+            <div className="flex items-center justify-between mb-4">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lifetime Records</p>
+              <Calendar className="w-5 h-5 text-slate-400" />
+            </div>
+            <p className="text-3xl font-black">{expenses.length}</p>
+            <p className="text-xs text-slate-500 mt-1">Total entries logged</p>
+          </div>
+        )}
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -133,7 +211,7 @@ export function Expense() {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sortedExpenses.map((expense) => (
+            {displayExpenses.map((expense) => (
               <tr key={expense.id} className="hover:bg-slate-50 transition-colors group">
                 <td className="px-6 py-4 text-slate-600 text-xs">{format(new Date(expense.date), 'MMM d, yyyy')}</td>
                 <td className="px-6 py-4">

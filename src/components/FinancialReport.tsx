@@ -106,7 +106,7 @@ export function FinancialReport() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <BarChart3 className="w-8 h-8 text-indigo-600" />
+            <BarChart3 className="w-8 h-8 text-pink-600" />
             Financial Aggregation Report
           </h2>
           <p className="text-slate-500 text-sm mt-1">Automated daily and monthly financial summaries.</p>
@@ -117,7 +117,7 @@ export function FinancialReport() {
             onClick={() => setViewType('daily')}
             className={cn(
               "px-4 py-2 rounded-lg text-sm font-bold transition-all",
-              viewType === 'daily' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              viewType === 'daily' ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
             )}
           >
             Daily
@@ -126,7 +126,7 @@ export function FinancialReport() {
             onClick={() => setViewType('monthly')}
             className={cn(
               "px-4 py-2 rounded-lg text-sm font-bold transition-all",
-              viewType === 'monthly' ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              viewType === 'monthly' ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
             )}
           >
             Monthly
@@ -142,14 +142,14 @@ export function FinancialReport() {
           </div>
           <input
             type="date"
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-pink-500"
             value={dateRange.start}
             onChange={(e) => setDateRange({ ...dateRange, start: e.target.value })}
           />
           <span className="text-slate-400">to</span>
           <input
             type="date"
-            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+            className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-pink-500"
             value={dateRange.end}
             onChange={(e) => setDateRange({ ...dateRange, end: e.target.value })}
           />
@@ -165,7 +165,7 @@ export function FinancialReport() {
                 <th className="px-6 py-4 text-xs font-bold text-emerald-600 uppercase tracking-wider text-right">Sales (+)</th>
                 <th className="px-6 py-4 text-xs font-bold text-rose-600 uppercase tracking-wider text-right">Expense (-)</th>
                 <th className="px-6 py-4 text-xs font-bold text-amber-600 uppercase tracking-wider text-right">Repurchase (-)</th>
-                <th className="px-6 py-4 text-xs font-bold text-indigo-600 uppercase tracking-wider text-right">Net Balance</th>
+                <th className="px-6 py-4 text-xs font-bold text-pink-600 uppercase tracking-wider text-right">Net Balance</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -177,7 +177,7 @@ export function FinancialReport() {
                   <td className="px-6 py-4 text-right text-sm font-bold text-amber-600">{formatMMK(row.repurchase)}</td>
                   <td className={cn(
                     "px-6 py-4 text-right text-sm font-black",
-                    row.netBalance >= 0 ? "text-indigo-600" : "text-rose-600"
+                    row.netBalance >= 0 ? "text-pink-600" : "text-rose-600"
                   )}>
                     {formatMMK(row.netBalance)}
                   </td>
@@ -196,7 +196,7 @@ export function FinancialReport() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-indigo-600 p-6 rounded-2xl text-white shadow-lg shadow-indigo-100">
+        <div className="bg-pink-600 p-6 rounded-2xl text-white shadow-lg shadow-pink-100">
           <div className="flex items-center justify-between mb-4">
             <Calculator className="w-6 h-6 opacity-80" />
             <span className="text-xs font-bold uppercase tracking-widest opacity-80">Total Period Sales</span>
@@ -217,12 +217,12 @@ export function FinancialReport() {
 
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <Calculator className="w-6 h-6 text-indigo-600" />
+            <Calculator className="w-6 h-6 text-pink-600" />
             <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Period Net Balance</span>
           </div>
           <p className={cn(
             "text-3xl font-black",
-            aggregatedData.reduce((sum, r) => sum + r.netBalance, 0) >= 0 ? "text-indigo-600" : "text-rose-600"
+            aggregatedData.reduce((sum, r) => sum + r.netBalance, 0) >= 0 ? "text-pink-600" : "text-rose-600"
           )}>
             {formatMMK(aggregatedData.reduce((sum, r) => sum + r.netBalance, 0))}
           </p>

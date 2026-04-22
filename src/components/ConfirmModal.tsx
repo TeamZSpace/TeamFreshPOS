@@ -28,13 +28,13 @@ export function ConfirmModal({
   const variants = {
     danger: 'bg-rose-600 hover:bg-rose-700 shadow-rose-100 text-white',
     warning: 'bg-amber-600 hover:bg-amber-700 shadow-amber-100 text-white',
-    info: 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100 text-white',
+    info: 'bg-pink-600 hover:bg-pink-700 shadow-pink-100 text-white',
   };
 
   const iconColors = {
     danger: 'text-rose-600 bg-rose-50',
     warning: 'text-amber-600 bg-amber-50',
-    info: 'text-indigo-600 bg-indigo-50',
+    info: 'text-pink-600 bg-pink-50',
   };
 
   return (

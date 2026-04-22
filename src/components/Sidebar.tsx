@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, ChevronRight, Database, FileText } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, ChevronRight, Database, FileText, Heart } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { MenuType } from '../App';
 
@@ -12,18 +12,18 @@ interface SidebarProps {
 
 export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarProps) {
   const menuItems: { name: MenuType; icon: React.ElementType; color: string }[] = [
-    { name: 'Dashboard', icon: LayoutDashboard, color: 'text-indigo-600 bg-indigo-50' },
-    { name: 'Inventory', icon: Package, color: 'text-emerald-600 bg-emerald-50' },
+    { name: 'Dashboard', icon: LayoutDashboard, color: 'text-pink-600 bg-pink-50' },
+    { name: 'Inventory', icon: Package, color: 'text-pink-600 bg-pink-50' },
     { name: 'ProductMaster', icon: Tags, color: 'text-rose-600 bg-rose-50' },
-    { name: 'Purchase', icon: ShoppingCart, color: 'text-amber-600 bg-amber-50' },
+    { name: 'Purchase', icon: ShoppingCart, color: 'text-pink-600 bg-pink-50' },
     { name: 'Sales', icon: TrendingUp, color: 'text-rose-600 bg-rose-50' },
-    { name: 'FinancialReport', icon: FileText, color: 'text-indigo-600 bg-indigo-50' },
-    { name: 'Expense', icon: Receipt, color: 'text-purple-600 bg-purple-50' },
-    { name: 'Categories', icon: Tags, color: 'text-cyan-600 bg-cyan-50' },
-    { name: 'CRM', icon: Users, color: 'text-blue-600 bg-blue-50' },
-    { name: 'Supplier', icon: Truck, color: 'text-orange-600 bg-orange-50' },
-    { name: 'Backup', icon: Database, color: 'text-indigo-600 bg-indigo-50' },
-    { name: 'Report', icon: TrendingUp, color: 'text-indigo-600 bg-indigo-50' },
+    { name: 'FinancialReport', icon: FileText, color: 'text-pink-600 bg-pink-50' },
+    { name: 'Expense', icon: Receipt, color: 'text-pink-600 bg-pink-50' },
+    { name: 'Categories', icon: Tags, color: 'text-rose-600 bg-rose-50' },
+    { name: 'CRM', icon: Users, color: 'text-pink-600 bg-pink-50' },
+    { name: 'Supplier', icon: Truck, color: 'text-rose-600 bg-rose-50' },
+    { name: 'Backup', icon: Database, color: 'text-pink-600 bg-pink-50' },
+    { name: 'Report', icon: TrendingUp, color: 'text-pink-600 bg-pink-50' },
     { name: 'Setting', icon: Settings, color: 'text-slate-600 bg-slate-50' },
   ];
 
@@ -43,10 +43,10 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
       )}>
         <div className="p-6 flex items-center justify-between border-b border-slate-100">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
-              <Package className="w-6 h-6 text-white" />
+            <div className="w-10 h-10 bg-pink-400 rounded-xl flex items-center justify-center shadow-lg shadow-pink-100">
+              <Heart className="w-6 h-6 text-white fill-current" />
             </div>
-            <span className="text-xl font-bold tracking-tight text-slate-900">GlowProfit</span>
+            <span className="text-xl font-bold tracking-tight text-slate-900">FreshPOS</span>
           </div>
           <button onClick={onClose} className="p-2 lg:hidden text-slate-400 hover:text-slate-600">
              <ChevronRight className="w-6 h-6 rotate-180" />
@@ -63,7 +63,7 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
               className={cn(
                 "w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative",
                 isActive 
-                  ? "bg-indigo-50 text-indigo-700 font-semibold shadow-sm" 
+                  ? "bg-pink-50 text-pink-700 font-semibold shadow-sm" 
                   : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               )}
             >
@@ -77,7 +77,7 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
                 <span className="text-sm">{item.name}</span>
               </div>
               {isActive && (
-                <div className="w-1.5 h-6 bg-indigo-600 rounded-full absolute left-0" />
+                <div className="w-1.5 h-6 bg-pink-400 rounded-full absolute left-0" />
               )}
               <ChevronRight className={cn(
                 "w-4 h-4 opacity-0 transition-all",
@@ -88,9 +88,9 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
         })}
       </nav>
       <div className="p-4 border-t border-slate-100">
-        <div className="bg-indigo-50 rounded-xl p-4">
-          <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wider mb-1">Support</p>
-          <p className="text-xs text-indigo-900/60 leading-relaxed">Need help? Contact our support team for assistance.</p>
+        <div className="bg-pink-50 rounded-xl p-4">
+          <p className="text-xs font-semibold text-pink-600 uppercase tracking-wider mb-1">Support</p>
+          <p className="text-xs text-pink-900/60 leading-relaxed">Need help? Contact our support team for assistance.</p>
         </div>
       </div>
     </aside>

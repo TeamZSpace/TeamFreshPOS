@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { Plus, Truck, Trash2, Phone, Mail, MapPin, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react';
+import { Plus, Truck, Trash2, Phone, Mail, MapPin, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
+import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 interface Supplier {
   id: string;
@@ -89,25 +91,49 @@ export function Supplier() {
 
   const { items: sortedSuppliers, requestSort, sortConfig } = useSortableData(suppliers, { key: 'name', direction: 'asc' });
 
+  const exportToExcel = () => {
+    const data = sortedSuppliers.map(s => ({
+      'Name': s.name,
+      'Contact Person': s.contactPerson || '',
+      'Phone': s.phone || '',
+      'Email': s.email || '',
+      'Address': s.address || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Suppliers');
+    XLSX.writeFile(wb, `suppliers_export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-indigo-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-indigo-600" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-pink-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-pink-600" />;
   };
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Truck className="w-6 h-6 text-indigo-600" />
+          <Truck className="w-6 h-6 text-pink-600" />
           Supplier Management
         </h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-        >
-          <Plus className="w-5 h-5" />
-          Add Supplier
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-pink-50 text-pink-600 rounded-xl font-semibold hover:bg-pink-100 transition-all border border-pink-200 group shadow-sm"
+          >
+            <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Export Excel</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+          >
+            <Plus className="w-5 h-5" />
+            Add Supplier
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -127,7 +153,7 @@ export function Supplier() {
               onClick={() => requestSort(sortConfig?.key || 'name')}
               className="p-1 hover:bg-slate-200 rounded transition-colors"
             >
-              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-indigo-600" /> : <ArrowDown className="w-4 h-4 text-indigo-600" />}
+              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-pink-600" /> : <ArrowDown className="w-4 h-4 text-pink-600" />}
             </button>
           </div>
         </div>
@@ -143,7 +169,7 @@ export function Supplier() {
                   e.stopPropagation();
                   openEditModal(supplier);
                 }} 
-                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
+                className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
                 title="Edit Supplier"
               >
                 <Edit2 className="w-4 h-4" />
@@ -162,8 +188,8 @@ export function Supplier() {
             </div>
 
             <div className="flex items-center gap-4 mb-4">
-              <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center">
-                <Truck className="w-6 h-6 text-indigo-600" />
+              <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center">
+                <Truck className="w-6 h-6 text-pink-600" />
               </div>
               <div>
                 <h3 className="font-bold text-slate-900">{supplier.name}</h3>
@@ -192,7 +218,7 @@ export function Supplier() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-indigo-600 text-white">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
               <h2 className="text-xl font-bold">{editingSupplier ? 'Edit Supplier' : 'New Supplier'}</h2>
               <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Plus className="w-6 h-6 rotate-45" />
@@ -201,32 +227,32 @@ export function Supplier() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Supplier Name</label>
-                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Contact Person</label>
-                <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={formData.contactPerson} onChange={e => setFormData({...formData, contactPerson: e.target.value})} />
+                <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.contactPerson} onChange={e => setFormData({...formData, contactPerson: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Phone</label>
                 <input 
                   type="text" 
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                   value={formData.phone} 
                   onChange={e => setFormData({...formData, phone: myanmarToEnglishNumerals(e.target.value)})} 
                 />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Email</label>
-                <input type="email" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
+                <input type="email" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Address</label>
-                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                <button type="submit" className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100">
                   {editingSupplier ? 'Update Supplier' : 'Save Supplier'}
                 </button>
               </div>

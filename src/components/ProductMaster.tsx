@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Plus, Edit2, Trash2, Search, ClipboardList, Package, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, ClipboardList, Package, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
+import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 interface ProductDefinition {
   id: string;
@@ -163,9 +165,27 @@ export function ProductMaster() {
 
   const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'name', direction: 'asc' });
 
+  const exportToExcel = () => {
+    const data = sortedProducts.map(p => ({
+      'Product Code': p.productCode,
+      'Product Name': p.name,
+      'Brand': p.brand || '',
+      'Category': p.category || '',
+      'Dosage': p.dosage || '',
+      'Unit Count': p.unitCount || '',
+      'Dosage Form': p.dosageForm || '',
+      'Type': p.type || 'Packing'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'ProductMaster');
+    XLSX.writeFile(wb, `product_master_export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-rose-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-rose-600" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-pink-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-pink-600" />;
   };
 
   return (
@@ -173,22 +193,31 @@ export function ProductMaster() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <ClipboardList className="w-8 h-8 text-rose-500" />
+            <ClipboardList className="w-8 h-8 text-pink-500" />
             Product Master
           </h1>
           <p className="text-slate-500 text-sm mt-1">Define product names and codes for reuse across the app.</p>
         </div>
-        <button 
-          onClick={() => {
-            const nextCode = generateNextCode('Packing');
-            setFormData({ ...formData, type: 'Packing', productCode: nextCode });
-            setIsModalOpen(true);
-          }}
-          className="flex items-center justify-center gap-2 bg-rose-600 hover:bg-rose-700 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-rose-100 font-semibold"
-        >
-          <Plus className="w-5 h-5" />
-          Add Master Product
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-emerald-100 font-semibold"
+          >
+            <FileSpreadsheet className="w-5 h-5" />
+            <span className="hidden sm:inline">Export Excel</span>
+          </button>
+          <button 
+            onClick={() => {
+              const nextCode = generateNextCode('Packing');
+              setFormData({ ...formData, type: 'Packing', productCode: nextCode });
+              setIsModalOpen(true);
+            }}
+            className="flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-pink-100 font-semibold"
+          >
+            <Plus className="w-5 h-5" />
+            Add Master Product
+          </button>
+        </div>
       </div>
 
       <div className="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
@@ -198,7 +227,7 @@ export function ProductMaster() {
             <input 
               type="text" 
               placeholder="Search products by name, brand or code..." 
-              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none transition-all"
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -241,7 +270,7 @@ export function ProductMaster() {
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
                         onClick={() => openEditModal(product)}
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
@@ -270,9 +299,9 @@ export function ProductMaster() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-rose-50/50">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-50/50">
               <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-                <Package className="w-6 h-6 text-rose-600" />
+                <Package className="w-6 h-6 text-pink-600" />
                 {editingProduct ? 'Edit Master Product' : 'Add Master Product'}
               </h2>
               <button onClick={closeModal} className="text-slate-400 hover:text-slate-600 p-1">
@@ -288,7 +317,7 @@ export function ProductMaster() {
                     onClick={() => handleTypeChange('Packing')}
                     className={`px-4 py-2 rounded-xl border-2 transition-all font-semibold text-sm ${
                       formData.type === 'Packing' 
-                        ? 'border-rose-500 bg-rose-50 text-rose-700' 
+                        ? 'border-pink-500 bg-pink-50 text-pink-700' 
                         : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
                     }`}
                   >
@@ -299,7 +328,7 @@ export function ProductMaster() {
                     onClick={() => handleTypeChange('Travel')}
                     className={`px-4 py-2 rounded-xl border-2 transition-all font-semibold text-sm ${
                       formData.type === 'Travel' 
-                        ? 'border-rose-500 bg-rose-50 text-rose-700' 
+                        ? 'border-pink-500 bg-pink-50 text-pink-700' 
                         : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
                     }`}
                   >
@@ -313,7 +342,7 @@ export function ProductMaster() {
                   <label className="text-sm font-semibold text-slate-700">Brand</label>
                   <input 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                     value={formData.brand} 
                     onChange={(e) => setFormData({ ...formData, brand: e.target.value })} 
                     placeholder="e.g. Nature's Bounty"
@@ -323,7 +352,7 @@ export function ProductMaster() {
                   <label className="text-sm font-semibold text-slate-700">Category / Sub-category</label>
                   <input 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                     value={formData.category} 
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })} 
                     placeholder="e.g. Vitamin C"
@@ -333,7 +362,7 @@ export function ProductMaster() {
                   <label className="text-sm font-semibold text-slate-700">Dosage</label>
                   <input 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                     value={formData.dosage} 
                     onChange={(e) => setFormData({ ...formData, dosage: e.target.value })} 
                     placeholder="e.g. 500mg"
@@ -343,7 +372,7 @@ export function ProductMaster() {
                   <label className="text-sm font-semibold text-slate-700">Unit Count</label>
                   <input 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                     value={formData.unitCount} 
                     onChange={(e) => setFormData({ ...formData, unitCount: e.target.value })} 
                     placeholder="e.g. 100 Count"
@@ -353,7 +382,7 @@ export function ProductMaster() {
                   <label className="text-sm font-semibold text-slate-700">Dosage Form</label>
                   <input 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                     value={formData.dosageForm} 
                     onChange={(e) => setFormData({ ...formData, dosageForm: e.target.value })} 
                     placeholder="e.g. Capsules"
@@ -364,7 +393,7 @@ export function ProductMaster() {
                   <input 
                     required 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none bg-slate-50 font-mono" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none bg-slate-50 font-mono" 
                     value={formData.productCode} 
                     readOnly
                   />
@@ -388,7 +417,7 @@ export function ProductMaster() {
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 font-semibold shadow-lg shadow-rose-100"
+                  className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-xl hover:bg-pink-700 font-semibold shadow-lg shadow-pink-100"
                 >
                   {editingProduct ? 'Update Product' : 'Save Product'}
                 </button>

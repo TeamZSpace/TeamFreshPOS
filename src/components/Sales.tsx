@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, runTransaction, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { cn, handleFirestoreError, OperationType, formatMMK, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
+import * as XLSX from 'xlsx';
 
 interface Sale {
   id: string;
@@ -438,9 +439,29 @@ Thank you for your order!
 
   const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'date', direction: 'desc' });
 
+  const exportToExcel = () => {
+    const data = sortedSales.map(s => ({
+      'Order #': s.orderNumber,
+      'Date': s.date,
+      'Customer': s.customerName,
+      'Items': s.items.map(i => `${i.name} x${i.quantity}`).join(', '),
+      'Payment': s.paymentMethod,
+      'Subtotal': s.subtotal,
+      'Delivery': s.deliveryFees,
+      'Total': s.totalAmount,
+      'Address': s.address,
+      'Note': s.note || ''
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Sales');
+    XLSX.writeFile(wb, `sales_export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-rose-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-rose-600" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-pink-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-pink-600" />;
   };
 
   return (
@@ -451,18 +472,27 @@ Thank you for your order!
           <input
             type="text"
             placeholder="Search orders or customers..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center justify-center gap-2 px-4 py-2 bg-rose-600 text-white rounded-xl font-semibold hover:bg-rose-700 transition-all shadow-lg shadow-rose-100"
-        >
-          <Plus className="w-5 h-5" />
-          New Sale
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 group"
+          >
+            <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Export Excel</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center justify-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+          >
+            <Plus className="w-5 h-5" />
+            New Sale
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
@@ -514,7 +544,7 @@ Thank you for your order!
                 <td className="px-6 py-4">
                   <span className={cn(
                     "px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
-                    sale.paymentMethod === 'Cash' ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"
+                    sale.paymentMethod === 'Cash' ? "bg-emerald-50 text-emerald-700" : "bg-pink-50 text-pink-700"
                   )}>
                     {sale.paymentMethod}
                   </span>
@@ -538,7 +568,7 @@ Thank you for your order!
                         e.stopPropagation();
                         openEditModal(sale);
                       }} 
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
                       title="Edit Order"
                     >
                       <Edit2 className="w-4 h-4" />
@@ -549,7 +579,7 @@ Thank you for your order!
                         e.stopPropagation();
                         setDeleteConfirm({ isOpen: true, sale });
                       }} 
-                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
                       title="Delete Order"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -565,7 +595,7 @@ Thank you for your order!
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-rose-600 text-white">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <ShoppingBag className="w-6 h-6" />
                 {editingSale ? 'Edit Order' : 'Create New Order'}
@@ -585,48 +615,48 @@ Thank you for your order!
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Facebook Name</label>
-                      <input required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" value={formData.facebookName} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
+                      <input required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.facebookName} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Order Name</label>
-                      <input className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" value={formData.orderName} onChange={e => setFormData({...formData, orderName: e.target.value})} />
+                      <input className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderName} onChange={e => setFormData({...formData, orderName: e.target.value})} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                       <input 
-                        className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                        className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                         value={formData.phone} 
                         onChange={e => setFormData({...formData, phone: myanmarToEnglishNumerals(e.target.value)})} 
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Sales Date</label>
-                      <input type="date" required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                      <input type="date" required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600">Address</label>
-                    <textarea rows={2} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                    <textarea rows={2} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Payment Method</label>
-                      <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" value={formData.paymentMethod} onChange={e => setFormData({...formData, paymentMethod: e.target.value})}>
+                      <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.paymentMethod} onChange={e => setFormData({...formData, paymentMethod: e.target.value})}>
                         {paymentMethods.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Delivery Date</label>
-                      <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" value={formData.deliveryDate} onChange={e => setFormData({...formData, deliveryDate: e.target.value})} />
+                      <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.deliveryDate} onChange={e => setFormData({...formData, deliveryDate: e.target.value})} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600">Delivery Fees (MMK)</label>
                     <input 
                       type="number" 
-                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none" 
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                       value={formData.deliveryFees} 
                       onChange={e => setFormData({...formData, deliveryFees: parseFloat(e.target.value) || 0})} 
                     />
@@ -635,7 +665,7 @@ Thank you for your order!
                     <label className="text-xs font-semibold text-slate-600">Note</label>
                     <textarea 
                       rows={2} 
-                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none resize-none" 
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" 
                       placeholder="Add order notes..."
                       value={formData.note} 
                       onChange={e => setFormData({...formData, note: e.target.value})} 
@@ -658,14 +688,14 @@ Thank you for your order!
                         <input 
                           type="text" 
                           placeholder="Search..." 
-                          className="w-full pl-7 pr-2 py-1 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-rose-500 outline-none"
+                          className="w-full pl-7 pr-2 py-1 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-pink-500 outline-none"
                           value={productSearch}
                           onChange={(e) => setProductSearch(e.target.value)}
                         />
                       </div>
                     </div>
                     <select 
-                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 outline-none"
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none"
                       onChange={(e) => {
                         if (e.target.value) {
                           handleAddItem(e.target.value);
@@ -728,7 +758,7 @@ Thank you for your order!
                                   }
                                 }} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded hover:bg-slate-200">+</button>
                               </div>
-                              <button type="button" onClick={() => handleRemoveItem(item.productId)} className="text-rose-500 hover:text-rose-700">
+                              <button type="button" onClick={() => handleRemoveItem(item.productId)} className="text-pink-500 hover:text-pink-700">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
@@ -740,8 +770,8 @@ Thank you for your order!
 
                   <div className="pt-4 border-t border-slate-100 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 font-semibold text-rose-600">Product Sales Total:</span>
-                      <span className="text-rose-600 font-bold">
+                      <span className="text-slate-500 font-semibold text-pink-600">Product Sales Total:</span>
+                      <span className="text-pink-600 font-bold">
                         {formatMMK(formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0))}
                       </span>
                     </div>

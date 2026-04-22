@@ -1,7 +1,7 @@
 import React from 'react';
 import { signInWithPopup, GoogleAuthProvider, signOut } from 'firebase/auth';
 import { auth } from '../firebase';
-import { LogIn, LogOut, User } from 'lucide-react';
+import { LogIn, LogOut, User, Heart } from 'lucide-react';
 
 export function Auth() {
   const [user, setUser] = React.useState(auth.currentUser);
@@ -48,10 +48,10 @@ export function Auth() {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-slate-50 p-4">
         <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md w-full text-center border border-slate-100">
-          <div className="w-20 h-20 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-indigo-200">
-            <LogIn className="w-10 h-10 text-white" />
+          <div className="w-20 h-20 bg-pink-400 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-pink-200">
+            <Heart className="w-10 h-10 text-white fill-current" />
           </div>
-          <h1 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">GlowProfit</h1>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight">FreshPOS</h1>
           <p className="text-slate-500 mb-8 leading-relaxed">Supplement & Skin Care ERP. Manage your inventory, sales, and CRM in one place.</p>
           
           {error && (
@@ -75,7 +75,7 @@ export function Auth() {
           <button
             onClick={login}
             disabled={isLoading}
-            className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all active:scale-95 shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-pink-500 text-white rounded-xl font-semibold hover:bg-pink-600 transition-all active:scale-95 shadow-lg shadow-pink-100 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isLoading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -93,10 +93,10 @@ export function Auth() {
     <div className="flex items-center gap-4 px-4 py-2 bg-white rounded-xl border border-slate-100 shadow-sm">
       <div className="flex items-center gap-3">
         {user.photoURL ? (
-          <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-slate-200 shadow-sm" referrerPolicy="no-referrer" />
+          <img src={user.photoURL} alt={user.displayName || ''} className="w-8 h-8 rounded-full border border-pink-200 shadow-sm" referrerPolicy="no-referrer" />
         ) : (
-          <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-            <User className="w-4 h-4 text-indigo-600" />
+          <div className="w-8 h-8 rounded-full bg-pink-100 flex items-center justify-center">
+            <User className="w-4 h-4 text-pink-600" />
           </div>
         )}
         <div className="hidden sm:block">

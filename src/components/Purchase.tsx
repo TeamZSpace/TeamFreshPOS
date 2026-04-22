@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, runTransaction, deleteDoc } from 'firebase/firestore';
-import { Plus, ShoppingCart, Calendar, Truck, DollarSign, Package, Edit2, Trash2, AlertTriangle, Search, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
+import { Plus, ShoppingCart, Calendar, Truck, DollarSign, Package, Edit2, Trash2, AlertTriangle, Search, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
+import * as XLSX from 'xlsx';
 
 interface Purchase {
   id: string;
@@ -173,25 +174,55 @@ export function Purchase() {
 
   const { items: sortedPurchases, requestSort, sortConfig } = useSortableData(purchases, { key: 'date', direction: 'desc' });
 
+  const exportToExcel = () => {
+    const data = sortedPurchases.map(p => {
+      const product = products.find(prod => prod.id === p.productId);
+      const supplier = suppliers.find(s => s.id === p.supplierId);
+      return {
+        'Date': p.date,
+        'Product': product?.name || '',
+        'Supplier': supplier?.name || '',
+        'Quantity': p.quantity,
+        'Unit Cost': p.unitCost,
+        'Shipping': p.shipping,
+        'Total Amount': p.totalAmount
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Purchases');
+    XLSX.writeFile(wb, `purchases_export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-amber-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-amber-600" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-pink-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-pink-600" />;
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center transition-all animate-in slide-in-from-top duration-500">
         <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <ShoppingCart className="w-6 h-6 text-amber-600" />
+          <ShoppingCart className="w-6 h-6 text-pink-600" />
           Purchase History
         </h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 transition-all shadow-lg shadow-amber-100"
-        >
-          <Plus className="w-5 h-5" />
-          New Purchase
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 group"
+          >
+            <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Export Excel</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+          >
+            <Plus className="w-5 h-5" />
+            New Purchase
+          </button>
+        </div>
       </div>
 
       <div className="overflow-x-auto border border-slate-200 rounded-xl">
@@ -229,7 +260,7 @@ export function Purchase() {
                   </td>
                   <td className="px-6 py-4 font-medium text-slate-900">{product?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-slate-600 text-xs">{supplier?.name || 'Unknown'}</td>
-                  <td className="px-6 py-4 text-center font-bold text-indigo-600">{purchase.quantity}</td>
+                  <td className="px-6 py-4 text-center font-bold text-pink-600">{purchase.quantity}</td>
                   <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.unitCost)}</td>
                   <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.shipping)}</td>
                   <td className="px-6 py-4 text-right font-bold text-slate-900">{formatMMK(purchase.totalAmount)}</td>
@@ -241,7 +272,7 @@ export function Purchase() {
                           e.stopPropagation();
                           openEditModal(purchase);
                         }} 
-                        className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                        className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
                         title="Edit Purchase"
                       >
                         <Edit2 className="w-4 h-4" />
@@ -269,7 +300,7 @@ export function Purchase() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-amber-600 text-white">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
               <h2 className="text-xl font-bold">{editingPurchase ? 'Edit Purchase' : 'Record New Purchase'}</h2>
               <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Plus className="w-6 h-6 rotate-45" />
@@ -278,7 +309,7 @@ export function Purchase() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
-                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
+                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
               </div>
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -288,13 +319,13 @@ export function Purchase() {
                     <input 
                       type="text" 
                       placeholder="Search..." 
-                      className="w-full pl-7 pr-2 py-1 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-amber-500 outline-none"
+                      className="w-full pl-7 pr-2 py-1 text-xs border border-slate-200 rounded-lg focus:ring-1 focus:ring-pink-500 outline-none"
                       value={productSearch}
                       onChange={(e) => setProductSearch(e.target.value)}
                     />
                   </div>
                 </div>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={formData.productId} onChange={(e) => setFormData({ ...formData, productId: e.target.value })}>
+                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productId} onChange={(e) => setFormData({ ...formData, productId: e.target.value })}>
                   <option value="">Select Product</option>
                   {products
                     .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())))
@@ -312,7 +343,7 @@ export function Purchase() {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Supplier</label>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={formData.supplierId} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
+                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
                   <option value="">Select Supplier</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -320,16 +351,16 @@ export function Purchase() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Quantity</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Unit Cost (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={formData.unitCost} onChange={(e) => setFormData({ ...formData, unitCost: parseFloat(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.unitCost} onChange={(e) => setFormData({ ...formData, unitCost: parseFloat(e.target.value) })} />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Shipping Cost (MMK)</label>
-                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" value={formData.shipping} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) })} />
+                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.shipping} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) })} />
               </div>
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                 <div className="text-sm text-slate-500">
@@ -337,7 +368,7 @@ export function Purchase() {
                 </div>
                 <div className="flex gap-3">
                   <button type="button" onClick={closeModal} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
-                  <button type="submit" className="px-6 py-2 bg-amber-600 text-white rounded-xl font-semibold hover:bg-amber-700 transition-all shadow-lg shadow-amber-100">
+                  <button type="submit" className="px-6 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100">
                     {editingPurchase ? 'Update Purchase' : 'Record Purchase'}
                   </button>
                 </div>

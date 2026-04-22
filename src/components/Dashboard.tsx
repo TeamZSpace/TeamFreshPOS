@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { handleFirestoreError, OperationType, cn, formatMMK } from '../lib/utils';
 import { format, subDays, isAfter } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
+import { exportAllToExcel } from '../lib/exportUtils';
+import { getDocs } from 'firebase/firestore';
 
 interface Sale {
   id: string;
@@ -46,6 +48,7 @@ export function Dashboard() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [settings, setSettings] = useState<Settings>({ openingCash: 20000000 });
   const [loading, setLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
@@ -97,6 +100,17 @@ export function Dashboard() {
   const inventoryValue = products.reduce((sum, p) => sum + (p.landedCost * p.stock), 0);
   const lowStockItems = products.filter(p => p.stock < 10);
 
+  const handleMasterExport = async () => {
+    setIsExporting(true);
+    try {
+      await exportAllToExcel(db);
+    } catch (err) {
+      alert('Failed to export master data. See console for details.');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const date = subDays(new Date(), i);
     const dateStr = format(date, 'yyyy-MM-dd');
@@ -128,8 +142,22 @@ export function Dashboard() {
 
   return (
     <div className="space-y-8">
+      <div className="flex items-center justify-between mb-2">
+        <div>
+          <h2 className="text-xl font-bold text-slate-900">Dashboard Summary</h2>
+          <p className="text-sm text-slate-500">Real-time business performance metrics.</p>
+        </div>
+        <button
+          onClick={handleMasterExport}
+          disabled={isExporting}
+          className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 text-white rounded-xl font-semibold transition-all shadow-lg shadow-pink-100 group"
+        >
+          {isExporting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />}
+          <span>{isExporting ? 'Exporting...' : 'Master Excel Export'}</span>
+        </button>
+      </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard title="Total Sales" value={totalSales} icon={TrendingUp} color="bg-indigo-50 text-indigo-600" />
+        <StatCard title="Total Sales" value={totalSales} icon={TrendingUp} color="bg-pink-50 text-pink-600" />
         <StatCard title="COGS" value={totalCOGS} icon={Package} color="bg-slate-50 text-slate-600" />
         <StatCard title="Total Expenses" value={totalExpenses} icon={TrendingDown} color="bg-rose-50 text-rose-600" />
         <StatCard title="Net Profit" value={netProfit} icon={ShoppingBag} color="bg-amber-50 text-amber-600" />
@@ -141,7 +169,7 @@ export function Dashboard() {
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-bold text-slate-900">Sales Overview (Last 7 Days)</h3>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 bg-indigo-600 rounded-full" />
+              <div className="w-3 h-3 bg-pink-500 rounded-full" />
               <span className="text-xs text-slate-500 font-medium">Revenue</span>
             </div>
           </div>
@@ -150,8 +178,8 @@ export function Dashboard() {
               <AreaChart data={last7Days}>
                 <defs>
                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#4f46e5" stopOpacity={0.1}/>
-                    <stop offset="95%" stopColor="#4f46e5" stopOpacity={0}/>
+                    <stop offset="5%" stopColor="#ec4899" stopOpacity={0.1}/>
+                    <stop offset="95%" stopColor="#ec4899" stopOpacity={0}/>
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -160,9 +188,9 @@ export function Dashboard() {
                 <Tooltip 
                   formatter={(value: number) => [formatMMK(value), 'Sales']}
                   contentStyle={{backgroundColor: '#fff', borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)'}}
-                  itemStyle={{color: '#4f46e5', fontWeight: 'bold'}}
+                  itemStyle={{color: '#db2777', fontWeight: 'bold'}}
                 />
-                <Area type="monotone" dataKey="sales" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
+                <Area type="monotone" dataKey="sales" stroke="#db2777" strokeWidth={3} fillOpacity={1} fill="url(#colorSales)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -171,7 +199,7 @@ export function Dashboard() {
         <div className="space-y-8">
           <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
-              <Package className="w-5 h-5 text-indigo-600" />
+              <Package className="w-5 h-5 text-pink-600" />
               Inventory Value
             </h3>
             <div className="flex items-end justify-between">
@@ -179,8 +207,8 @@ export function Dashboard() {
                 <p className="text-2xl font-black text-slate-900">{formatMMK(inventoryValue)}</p>
                 <p className="text-sm text-slate-500 font-medium">Current stock valuation</p>
               </div>
-              <div className="bg-indigo-50 p-2 rounded-lg">
-                <TrendingUp className="w-5 h-5 text-indigo-600" />
+              <div className="bg-pink-50 p-2 rounded-lg">
+                <TrendingUp className="w-5 h-5 text-pink-600" />
               </div>
             </div>
           </div>

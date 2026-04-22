@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
-import { TrendingUp, Download, Calendar, ArrowUpRight, ArrowDownRight, DollarSign, ShoppingBag, Receipt } from 'lucide-react';
+import { TrendingUp, Download, Calendar, ArrowUpRight, ArrowDownRight, DollarSign, ShoppingBag, Receipt, Database, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { cn, formatMMK, handleFirestoreError, OperationType } from '../lib/utils';
 import { format, startOfMonth, endOfMonth, eachMonthOfInterval, subMonths, isSameMonth } from 'date-fns';
 import * as XLSX from 'xlsx';
+import { exportAllToExcel } from '../lib/exportUtils';
 
 interface Sale {
   id: string;
@@ -33,6 +34,7 @@ export function Report() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
+  const [isExportingMaster, setIsExportingMaster] = useState(false);
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
@@ -136,6 +138,17 @@ export function Report() {
     XLSX.writeFile(wb, `Monthly_Report_${format(selectedMonth, 'yyyy_MM')}.xlsx`);
   };
 
+  const handleMasterExport = async () => {
+    setIsExportingMaster(true);
+    try {
+      await exportAllToExcel(db);
+    } catch (err) {
+      alert('Failed to export master data. See console for details.');
+    } finally {
+      setIsExportingMaster(false);
+    }
+  };
+
   if (isLoading) {
     return <div className="flex items-center justify-center h-64">Loading report data...</div>;
   }
@@ -144,8 +157,8 @@ export function Report() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-indigo-100 rounded-xl">
-            <Calendar className="w-6 h-6 text-indigo-600" />
+          <div className="p-2 bg-pink-100 rounded-xl">
+            <Calendar className="w-6 h-6 text-pink-600" />
           </div>
           <div>
             <h2 className="text-xl font-bold text-slate-900">Monthly Performance</h2>
@@ -155,7 +168,7 @@ export function Report() {
         
         <div className="flex items-center gap-3">
           <select 
-            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none shadow-sm"
+            className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none shadow-sm"
             value={selectedMonth.toISOString()}
             onChange={(e) => setSelectedMonth(new Date(e.target.value))}
           >
@@ -168,7 +181,7 @@ export function Report() {
           
           <button 
             onClick={exportToExcel}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
           >
             <Download className="w-5 h-5" />
             Export Excel
@@ -231,7 +244,7 @@ export function Report() {
       <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
         <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <TrendingUp className="w-5 h-5 text-indigo-600" />
+            <TrendingUp className="w-5 h-5 text-pink-600" />
             <h3 className="font-bold text-slate-900">Monthly Net Profit Check List</h3>
           </div>
           <span className="text-xs text-slate-500 italic">Historical performance for the last 12 months</span>
@@ -427,6 +440,26 @@ export function Report() {
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div className="bg-gradient-to-r from-pink-500 to-pink-600 rounded-3xl p-8 text-white shadow-xl shadow-pink-100 flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="flex items-center gap-4 text-center md:text-left flex-col md:flex-row">
+          <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-sm">
+            <Database className="w-10 h-10 text-white" />
+          </div>
+          <div>
+            <h3 className="text-2xl font-bold">Master Data Export</h3>
+            <p className="text-pink-50 text-sm opacity-90 mt-1">Download all collections (Products, Sales, CRM, etc.) into a single multi-sheet Excel file.</p>
+          </div>
+        </div>
+        <button
+          onClick={handleMasterExport}
+          disabled={isExportingMaster}
+          className="flex items-center gap-3 px-8 py-4 bg-white text-pink-600 rounded-2xl font-bold hover:bg-pink-50 transition-all shadow-lg min-w-[200px] justify-center disabled:opacity-50 disabled:cursor-not-allowed group"
+        >
+          {isExportingMaster ? <RefreshCw className="w-6 h-6 animate-spin" /> : <FileSpreadsheet className="w-6 h-6 group-hover:scale-110 transition-transform" />}
+          <span>{isExportingMaster ? 'Generating...' : 'Export All Menus'}</span>
+        </button>
       </div>
     </div>
   );

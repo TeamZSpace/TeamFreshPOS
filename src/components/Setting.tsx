@@ -52,7 +52,7 @@ export function Setting() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `glowprofit_backup_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `freshpos_backup_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -185,7 +185,7 @@ export function Setting() {
             <label className="text-sm font-semibold text-slate-700">Company Name</label>
             <div className="relative">
               <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input required type="text" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={settings.companyName} onChange={e => setSettings({...settings, companyName: e.target.value})} />
+              <input required type="text" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.companyName} onChange={e => setSettings({...settings, companyName: e.target.value})} />
             </div>
           </div>
           <div className="space-y-1">
@@ -194,7 +194,7 @@ export function Setting() {
               <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
               <input 
                 type="text" 
-                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                 value={settings.phone} 
                 onChange={e => setSettings({...settings, phone: myanmarToEnglishNumerals(e.target.value)})} 
               />
@@ -204,20 +204,20 @@ export function Setting() {
             <label className="text-sm font-semibold text-slate-700">Address</label>
             <div className="relative">
               <MapPin className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
-              <textarea rows={3} className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none resize-none" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} />
+              <textarea rows={3} className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} />
             </div>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-semibold text-slate-700">Opening Cash (MMK)</label>
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" value={settings.openingCash} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
+              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.openingCash} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
             </div>
           </div>
           <button
             type="submit"
             disabled={isSaving}
-            className="flex items-center justify-center gap-2 px-6 py-2 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-100"
+            className="flex items-center justify-center gap-2 px-6 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all disabled:opacity-50 shadow-lg shadow-pink-100"
           >
             <Save className="w-5 h-5" />
             {isSaving ? 'Saving...' : 'Save Settings'}
@@ -269,10 +269,10 @@ export function Setting() {
           </div>
         </div>
 
-        <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 flex items-center justify-between">
+        <div className="bg-pink-50 p-6 rounded-2xl border border-pink-100 flex items-center justify-between">
           <div>
-            <h3 className="font-bold text-indigo-900">Seed Sample Data</h3>
-            <p className="text-sm text-indigo-600">Populate your database with initial categories, suppliers, and products.</p>
+            <h3 className="font-bold text-pink-900">Seed Sample Data</h3>
+            <p className="text-sm text-pink-600">Populate your database with initial categories, suppliers, and products.</p>
           </div>
           <button
             onClick={handleSeedData}
@@ -282,7 +282,7 @@ export function Setting() {
                 ? 'bg-green-500 text-white' 
                 : seedStatus === 'error'
                 ? 'bg-red-500 text-white'
-                : 'bg-indigo-600 text-white hover:bg-indigo-700'
+                : 'bg-pink-600 text-white hover:bg-pink-700'
             } disabled:opacity-50`}
           >
             {isSeeding ? (

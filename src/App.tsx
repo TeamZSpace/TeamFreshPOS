@@ -17,7 +17,7 @@ import { Report } from './components/Report';
 import { ProductMaster } from './components/ProductMaster';
 import { Backup } from './components/Backup';
 import { FinancialReport } from './components/FinancialReport';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList, Database } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList, Database, Heart } from 'lucide-react';
 import { collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/utils';
 
@@ -99,8 +99,8 @@ export default function App() {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-slate-500 font-medium animate-pulse">Initializing GlowProfit...</p>
+          <div className="w-12 h-12 border-4 border-pink-400 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-slate-500 font-medium animate-pulse">Initializing FreshPOS...</p>
         </div>
       </div>
     );
@@ -145,12 +145,12 @@ export default function App() {
                 <div className="flex items-center gap-3 lg:hidden">
                   <button 
                     onClick={() => setIsMobileMenuOpen(true)}
-                    className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 hover:text-indigo-600 transition-colors"
+                    className="p-2 bg-white border border-slate-200 rounded-xl shadow-sm text-slate-600 hover:text-pink-600 transition-colors"
                   >
                     <LayoutDashboard className="w-6 h-6" />
                   </button>
-                  <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
-                    <Package className="w-6 h-6 text-white" />
+                  <div className="w-10 h-10 bg-pink-400 rounded-xl flex items-center justify-center shadow-lg shadow-pink-100">
+                    <Heart className="w-6 h-6 text-white fill-current" />
                   </div>
                 </div>
                 <div className="hidden sm:block">

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { Users, Search, Phone, MapPin, Calendar, Facebook, User, Award, Trash2, Edit2, Plus, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingBag } from 'lucide-react';
+import { Users, Search, Phone, MapPin, Calendar, Facebook, User, Award, Trash2, Edit2, Plus, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingBag, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
+import * as XLSX from 'xlsx';
 
 interface Customer {
   id: string;
@@ -95,25 +96,49 @@ export function CRM() {
 
   const { items: sortedCustomers, requestSort, sortConfig } = useSortableData(filteredCustomers, { key: 'lastOrderDate', direction: 'desc' });
 
+  const exportToExcel = () => {
+    const data = sortedCustomers.map(c => ({
+      'Facebook Name': c.facebookName,
+      'Order Name': c.orderName || '',
+      'Phone': c.phone || '',
+      'Address': c.address || '',
+      'Total Orders': c.orderCount || 0,
+      'Points': c.points || 0,
+      'Last Order': c.lastOrderDate ? format(new Date(c.lastOrderDate), 'MMM d, yyyy') : 'Never'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Customers');
+    XLSX.writeFile(wb, `customers_export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-blue-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-blue-600" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-pink-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-pink-600" />;
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Users className="w-6 h-6 text-blue-600" />
+          <Users className="w-6 h-6 text-pink-600" />
           Customer Relationship Management
         </h2>
+        <button
+          onClick={exportToExcel}
+          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 group"
+        >
+          <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+          <span className="hidden sm:inline">Export CRM</span>
+        </button>
         <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
           <input
             type="text"
             placeholder="Search customers..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition-all"
+            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -135,7 +160,7 @@ export function CRM() {
               onClick={() => requestSort(sortConfig?.key || 'lastOrderDate')}
               className="p-1 hover:bg-slate-200 rounded transition-colors"
             >
-              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-blue-600" /> : <ArrowDown className="w-4 h-4 text-blue-600" />}
+              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-pink-600" /> : <ArrowDown className="w-4 h-4 text-pink-600" />}
             </button>
           </div>
         </div>
@@ -152,7 +177,7 @@ export function CRM() {
                   e.stopPropagation();
                   openEditModal(customer);
                 }} 
-                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
+                className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
                 title="Edit Customer"
               >
                 <Edit2 className="w-4 h-4" />
@@ -172,13 +197,13 @@ export function CRM() {
 
             <div className="flex items-start justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
-                  <User className="w-6 h-6 text-blue-600" />
+                <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center">
+                  <User className="w-6 h-6 text-pink-600" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 flex items-center gap-2">
                     {customer.facebookName}
-                    <Facebook className="w-3 h-3 text-blue-500" />
+                    <Facebook className="w-3 h-3 text-pink-500" />
                   </h3>
                   <p className="text-xs text-slate-500">Order Name: {customer.orderName || '-'}</p>
                 </div>
@@ -206,12 +231,12 @@ export function CRM() {
                   <Award className="w-4 h-4" />
                   <span className="text-xs font-black">{customer.points || 0} Points</span>
                 </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-blue-50 text-blue-700 rounded-full border border-blue-100 w-fit">
+                <div className="flex items-center gap-2 px-3 py-1 bg-pink-50 text-pink-700 rounded-full border border-pink-100 w-fit">
                   <ShoppingBag className="w-4 h-4" />
                   <span className="text-xs font-black">{customer.orderCount || 0} Orders</span>
                 </div>
               </div>
-              <button className="text-xs font-bold text-blue-600 hover:text-blue-800 transition-colors">
+              <button className="text-xs font-bold text-pink-600 hover:text-pink-800 transition-colors">
                 View History →
               </button>
             </div>
@@ -222,7 +247,7 @@ export function CRM() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-blue-600 text-white">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
               <h2 className="text-xl font-bold">Edit Customer</h2>
               <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Plus className="w-6 h-6 rotate-45" />
@@ -231,17 +256,17 @@ export function CRM() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Facebook Name</label>
-                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.facebookName} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
+                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.facebookName} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Order Name</label>
-                <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.orderName} onChange={e => setFormData({...formData, orderName: e.target.value})} />
+                <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderName} onChange={e => setFormData({...formData, orderName: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Phone</label>
                 <input 
                   type="text" 
-                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" 
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
                   value={formData.phone} 
                   onChange={e => setFormData({...formData, phone: myanmarToEnglishNumerals(e.target.value)})} 
                 />
@@ -249,20 +274,20 @@ export function CRM() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Points</label>
-                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Orders</label>
-                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none" value={formData.orderCount} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderCount} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Address</label>
-                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition-all shadow-lg shadow-blue-100">Update Customer</button>
+                <button type="submit" className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100">Update Customer</button>
               </div>
             </form>
           </div>

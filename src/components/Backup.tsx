@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { Database, Download, History, ShieldCheck, AlertCircle, Clock, RefreshCw } from 'lucide-react';
+import { Database, Download, History, ShieldCheck, AlertCircle, Clock, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, formatMMK } from '../lib/utils';
 import { format } from 'date-fns';
+import { exportAllToExcel } from '../lib/exportUtils';
 
 interface BackupRecord {
   id: string;
@@ -16,6 +17,7 @@ interface BackupRecord {
 export function Backup() {
   const [backups, setBackups] = useState<BackupRecord[]>([]);
   const [isBackingUp, setIsBackingUp] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [lastBackup, setLastBackup] = useState<BackupRecord | null>(null);
 
   const collectionsToBackup = [
@@ -68,11 +70,22 @@ export function Backup() {
     }
   };
 
+  const handleMasterExport = async () => {
+    setIsExportingExcel(true);
+    try {
+      await exportAllToExcel(db);
+    } catch (err) {
+      alert('Failed to export master data. See console for details.');
+    } finally {
+      setIsExportingExcel(false);
+    }
+  };
+
   const downloadBackup = (backup: any) => {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(backup.data));
     const downloadAnchorNode = document.createElement('a');
     downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", `glowprofit_backup_${format(backup.timestamp?.toDate() || new Date(), 'yyyyMMdd_HHmm')}.json`);
+    downloadAnchorNode.setAttribute("download", `freshpos_backup_${format(backup.timestamp?.toDate() || new Date(), 'yyyyMMdd_HHmm')}.json`);
     document.body.appendChild(downloadAnchorNode);
     downloadAnchorNode.click();
     downloadAnchorNode.remove();
@@ -83,35 +96,45 @@ export function Backup() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-            <Database className="w-8 h-8 text-indigo-600" />
+            <Database className="w-8 h-8 text-pink-600" />
             Database Backup & Recovery
           </h1>
           <p className="text-slate-500 text-sm mt-1">Protect your data with automated and manual backups.</p>
         </div>
-        <button 
-          onClick={performBackup}
-          disabled={isBackingUp}
-          className="flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-300 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-indigo-100 font-semibold"
-        >
-          {isBackingUp ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-          {isBackingUp ? 'Backing up...' : 'Backup Now'}
-        </button>
+        <div className="flex flex-wrap gap-3">
+          <button 
+            onClick={handleMasterExport}
+            disabled={isExportingExcel}
+            className="flex items-center justify-center gap-2 bg-pink-50 text-pink-600 border border-pink-200 hover:bg-pink-100 disabled:bg-slate-100 disabled:text-slate-400 px-6 py-3 rounded-2xl transition-all duration-200 shadow-sm font-semibold"
+          >
+            {isExportingExcel ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FileSpreadsheet className="w-5 h-5" />}
+            {isExportingExcel ? 'Exporting...' : 'Export All to Excel'}
+          </button>
+          <button 
+            onClick={performBackup}
+            disabled={isBackingUp}
+            className="flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-pink-100 font-semibold"
+          >
+            {isBackingUp ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
+            {isBackingUp ? 'Backing up...' : 'Backup Now'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="bg-indigo-50 p-6 rounded-3xl border border-indigo-100">
+        <div className="bg-pink-50 p-6 rounded-3xl border border-pink-100">
           <div className="flex items-center gap-3 mb-4">
             <div className="p-2 bg-white rounded-xl shadow-sm">
-              <ShieldCheck className="w-6 h-6 text-indigo-600" />
+              <ShieldCheck className="w-6 h-6 text-pink-600" />
             </div>
-            <h3 className="font-bold text-indigo-900">Backup Status</h3>
+            <h3 className="font-bold text-pink-900">Backup Status</h3>
           </div>
           <div className="space-y-2">
-            <p className="text-sm text-indigo-700 flex items-center gap-2">
+            <p className="text-sm text-pink-700 flex items-center gap-2">
               <Clock className="w-4 h-4" />
               Auto-backup: Every 5 hours
             </p>
-            <p className="text-sm text-indigo-700 flex items-center gap-2">
+            <p className="text-sm text-pink-700 flex items-center gap-2">
               <History className="w-4 h-4" />
               Last Backup: {lastBackup?.timestamp ? format(lastBackup.timestamp.toDate(), 'MMM d, h:mm a') : 'Never'}
             </p>
@@ -174,7 +197,7 @@ export function Backup() {
                   <td className="px-6 py-4 text-right">
                     <button 
                       onClick={() => downloadBackup(backup)}
-                      className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors"
                       title="Download JSON"
                     >
                       <Download className="w-4 h-4" />

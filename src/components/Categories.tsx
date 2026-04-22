@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, deleteDoc, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { Plus, Tags, Trash2, Layers, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter } from 'lucide-react';
+import { Plus, Tags, Trash2, Layers, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
+import { format } from 'date-fns';
+import * as XLSX from 'xlsx';
 
 interface Category {
   id: string;
@@ -79,9 +81,24 @@ export function Categories() {
 
   const { items: sortedCategories, requestSort, sortConfig } = useSortableData(categories, { key: 'name', direction: 'asc' });
 
+  const exportToExcel = () => {
+    const data = sortedCategories.map(c => {
+      const parent = c.parent ? sortedCategories.find(p => p.id === c.parent) : null;
+      return {
+        'Category Name': c.name,
+        'Parent Category': parent?.name || 'Main'
+      };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Categories');
+    XLSX.writeFile(wb, `categories_export_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
+
   const getSortIcon = (key: string) => {
     if (sortConfig?.key !== key) return <ArrowUpDown className="w-4 h-4 ml-1 opacity-20 group-hover:opacity-100 transition-opacity" />;
-    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-emerald-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-emerald-600" />;
+    return sortConfig.direction === 'asc' ? <ArrowUp className="w-4 h-4 ml-1 text-pink-600" /> : <ArrowDown className="w-4 h-4 ml-1 text-pink-600" />;
   };
 
   const mainCategories = sortedCategories.filter(c => !c.parent);
@@ -90,16 +107,25 @@ export function Categories() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-          <Tags className="w-6 h-6 text-emerald-600" />
+          <Tags className="w-6 h-6 text-pink-600" />
           Product Categories
         </h2>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
-        >
-          <Plus className="w-5 h-5" />
-          New Category
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-pink-50 text-pink-600 rounded-xl font-semibold hover:bg-pink-100 transition-all border border-pink-200 group"
+          >
+            <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Export Excel</span>
+          </button>
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+          >
+            <Plus className="w-5 h-5" />
+            New Category
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
@@ -118,7 +144,7 @@ export function Categories() {
               onClick={() => requestSort(sortConfig?.key || 'name')}
               className="p-1 hover:bg-slate-200 rounded transition-colors"
             >
-              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-emerald-600" /> : <ArrowDown className="w-4 h-4 text-emerald-600" />}
+              {sortConfig?.direction === 'asc' ? <ArrowUp className="w-4 h-4 text-pink-600" /> : <ArrowDown className="w-4 h-4 text-pink-600" />}
             </button>
           </div>
         </div>
@@ -134,7 +160,7 @@ export function Categories() {
                   e.stopPropagation();
                   openEditModal(main);
                 }} 
-                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
+                className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
                 title="Edit Category"
               >
                 <Edit2 className="w-4 h-4" />
@@ -153,8 +179,8 @@ export function Categories() {
             </div>
 
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center">
-                <Layers className="w-5 h-5 text-emerald-600" />
+              <div className="w-10 h-10 bg-pink-50 rounded-xl flex items-center justify-center">
+                <Layers className="w-5 h-5 text-pink-600" />
               </div>
               <h3 className="font-bold text-slate-900">{main.name}</h3>
             </div>
@@ -171,7 +197,7 @@ export function Categories() {
                         e.stopPropagation();
                         openEditModal(sub);
                       }} 
-                      className="p-1 text-slate-400 hover:text-indigo-600 transition-colors"
+                      className="p-1 text-slate-400 hover:text-pink-600 transition-colors"
                       title="Edit Sub-category"
                     >
                       <Edit2 className="w-3 h-3" />
@@ -201,7 +227,7 @@ export function Categories() {
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-emerald-600 text-white">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
               <h2 className="text-xl font-bold">{editingCategory ? 'Edit Category' : 'New Category'}</h2>
               <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Plus className="w-6 h-6 rotate-45" />
@@ -210,11 +236,11 @@ export function Categories() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Category Name</label>
-                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Parent Category (Optional)</label>
-                <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" value={formData.parent || ''} onChange={e => setFormData({...formData, parent: e.target.value || null})}>
+                <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.parent || ''} onChange={e => setFormData({...formData, parent: e.target.value || null})}>
                   <option value="">None (Main Category)</option>
                   {mainCategories.filter(c => c.id !== editingCategory?.id).map(c => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -223,7 +249,7 @@ export function Categories() {
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>
-                <button type="submit" className="flex-1 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100">
+                <button type="submit" className="flex-1 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100">
                   {editingCategory ? 'Update Category' : 'Create Category'}
                 </button>
               </div>

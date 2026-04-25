@@ -185,7 +185,7 @@ export function Setting() {
             <label className="text-sm font-semibold text-slate-700">Company Name</label>
             <div className="relative">
               <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input required type="text" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.companyName} onChange={e => setSettings({...settings, companyName: e.target.value})} />
+              <input required type="text" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.companyName || ''} onChange={e => setSettings({...settings, companyName: e.target.value})} />
             </div>
           </div>
           <div className="space-y-1">
@@ -195,7 +195,7 @@ export function Setting() {
               <input 
                 type="text" 
                 className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                value={settings.phone} 
+                value={settings.phone || ''} 
                 onChange={e => setSettings({...settings, phone: myanmarToEnglishNumerals(e.target.value)})} 
               />
             </div>
@@ -204,14 +204,14 @@ export function Setting() {
             <label className="text-sm font-semibold text-slate-700">Address</label>
             <div className="relative">
               <MapPin className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
-              <textarea rows={3} className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={settings.address} onChange={e => setSettings({...settings, address: e.target.value})} />
+              <textarea rows={3} className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={settings.address || ''} onChange={e => setSettings({...settings, address: e.target.value})} />
             </div>
           </div>
           <div className="space-y-1">
             <label className="text-sm font-semibold text-slate-700">Opening Cash (MMK)</label>
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.openingCash} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
+              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.openingCash ?? 0} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
             </div>
           </div>
           <button

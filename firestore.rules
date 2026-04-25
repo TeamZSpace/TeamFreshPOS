@@ -167,6 +167,15 @@ service cloud.firestore {
              data.status in ['success', 'failed'];
     }
 
+    function isValidPartner(data) {
+      return hasRequiredFields(['name', 'share', 'investment']) &&
+             isValidString('name', 1, 100) &&
+             isValidOptionalString('email', 100) &&
+             isValidOptionalString('phone', 50) &&
+             isPositive('share') &&
+             isPositive('investment');
+    }
+
     // ===============================================================
     // Match Rules
     // ===============================================================
@@ -235,6 +244,11 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isValidBackup(request.resource.data);
       allow update: if false; // Backups should be immutable
       allow delete: if isAdmin();
+    }
+
+    match /partners/{partnerId} {
+      allow read, delete: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidPartner(request.resource.data);
     }
   }
 }

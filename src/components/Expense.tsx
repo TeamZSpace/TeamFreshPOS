@@ -15,6 +15,8 @@ interface Expense {
   description: string;
 }
 
+import { notifyUndo } from '../lib/notifications';
+
 export function Expense() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -79,8 +81,23 @@ export function Expense() {
   };
 
   const handleDelete = async (id: string) => {
+    const expenseToDelete = expenses.find(e => e.id === id);
+    if (!expenseToDelete) return;
+
     try {
       await deleteDoc(doc(db, 'expenses', id));
+      
+      notifyUndo({
+        message: `Expense of ${formatMMK(expenseToDelete.amount)} deleted`,
+        undo: async () => {
+          const { id: _, ...data } = expenseToDelete;
+          await addDoc(collection(db, 'expenses'), {
+            ...data,
+            createdAt: serverTimestamp(),
+            isUndone: true
+          });
+        }
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'expenses');
     }
@@ -287,22 +304,22 @@ export function Expense() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Date</label>
-                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Category</label>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})}>
+                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
                   <option value="">Select Category</option>
                   {categories.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Amount (MMK)</label>
-                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.amount} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})} />
+                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.amount ?? 0} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Description</label>
-                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} />
+                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>

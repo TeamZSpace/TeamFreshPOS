@@ -42,6 +42,8 @@ interface Supplier {
   name: string;
 }
 
+import { notifyUndo } from '../lib/notifications';
+
 export function Purchase() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -158,14 +160,42 @@ export function Purchase() {
   const handleDelete = async (purchase: Purchase) => {
     try {
       await runTransaction(db, async (transaction) => {
+        // 1. READS FIRST
         const productRef = doc(db, 'products', purchase.productId);
         const productDoc = await transaction.get(productRef);
+        
+        // 2. WRITES SECOND
         if (productDoc.exists()) {
           transaction.update(productRef, {
             stock: productDoc.data().stock - purchase.quantity
           });
         }
         transaction.delete(doc(db, 'purchases', purchase.id));
+      });
+
+      const productName = products.find(p => p.id === purchase.productId)?.name || 'Product';
+      notifyUndo({
+        message: `Purchase of ${productName} deleted`,
+        undo: async () => {
+          await runTransaction(db, async (transaction) => {
+            // 1. READS FIRST
+            const productRef = doc(db, 'products', purchase.productId);
+            const productDoc = await transaction.get(productRef);
+            
+            // 2. WRITES SECOND
+            if (productDoc.exists()) {
+              transaction.update(productRef, {
+                stock: productDoc.data().stock + purchase.quantity
+              });
+            }
+            const { id, ...data } = purchase;
+            transaction.set(doc(db, 'purchases', id), {
+              ...data,
+              createdAt: serverTimestamp(),
+              isUndone: true
+            });
+          });
+        }
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'purchases');
@@ -309,7 +339,7 @@ export function Purchase() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
-                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
+                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
               </div>
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -325,7 +355,7 @@ export function Purchase() {
                     />
                   </div>
                 </div>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productId} onChange={(e) => setFormData({ ...formData, productId: e.target.value })}>
+                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productId || ''} onChange={(e) => setFormData({ ...formData, productId: e.target.value })}>
                   <option value="">Select Product</option>
                   {products
                     .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())))
@@ -343,7 +373,7 @@ export function Purchase() {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Supplier</label>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
+                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId || ''} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
                   <option value="">Select Supplier</option>
                   {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
@@ -351,16 +381,16 @@ export function Purchase() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Quantity</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.quantity ?? 0} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Unit Cost (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.unitCost} onChange={(e) => setFormData({ ...formData, unitCost: parseFloat(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.unitCost ?? 0} onChange={(e) => setFormData({ ...formData, unitCost: parseFloat(e.target.value) })} />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Shipping Cost (MMK)</label>
-                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.shipping} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) })} />
+                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.shipping ?? 0} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) })} />
               </div>
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
                 <div className="text-sm text-slate-500">

@@ -52,6 +52,8 @@ interface Customer {
   orderCount?: number;
 }
 
+import { notifyUndo } from '../lib/notifications';
+
 export function Sales() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -214,36 +216,36 @@ Thank you for your order!
       }
 
       await runTransaction(db, async (transaction) => {
-        // 1. READS FIRST
+        // --- 1. READS SECTION ---
         const productDocs: { [id: string]: any } = {};
-        
-        // Get all unique product IDs involved
         const productIds = new Set<string>();
         if (editingSale) {
           editingSale.items.forEach(item => productIds.add(item.productId));
         }
         formData.items.forEach(item => productIds.add(item.productId));
 
-        // Perform all gets
         for (const pid of productIds) {
           const pRef = doc(db, 'products', pid);
           const pDoc = await transaction.get(pRef);
           if (pDoc.exists()) {
             productDocs[pid] = pDoc.data();
-          } else {
-            // If it's in formData.items, it MUST exist
-            if (formData.items.some(item => item.productId === pid)) {
-              throw new Error(`Product not found: ${pid}`);
-            }
+          } else if (formData.items.some(item => item.productId === pid)) {
+            throw new Error(`Product not found: ${pid}`);
           }
         }
 
-        // 2. WRITES SECOND
+        let customerDoc = null;
+        if (customerId) {
+          customerDoc = await transaction.get(doc(db, 'customers', customerId));
+        }
+
+        // --- 2. WRITES SECTION ---
         
         // Handle Customer (CRM)
-        if (customerId && existingCustomerData) {
-          const currentPoints = existingCustomerData.points || 0;
-          const currentOrderCount = existingCustomerData.orderCount || 0;
+        if (customerId && customerDoc?.exists()) {
+          const currentData = customerDoc.data();
+          const currentPoints = currentData.points || 0;
+          const currentOrderCount = currentData.orderCount || 0;
           let finalPoints = currentPoints + pointsToAdd;
           let finalOrderCount = currentOrderCount;
 
@@ -279,19 +281,19 @@ Thank you for your order!
         }
 
         // Update Product Stocks
-        // First revert old stocks if editing
+        // Revert old stocks if editing
         if (editingSale) {
           for (const item of editingSale.items) {
             if (productDocs[item.productId]) {
               const currentStock = productDocs[item.productId].stock;
               const newStock = currentStock + item.quantity;
               transaction.update(doc(db, 'products', item.productId), { stock: newStock });
-              productDocs[item.productId].stock = newStock; // Update local copy for next loop
+              productDocs[item.productId].stock = newStock;
             }
           }
         }
 
-        // Then subtract new stocks
+        // Subtract new stocks
         for (const item of formData.items) {
           if (productDocs[item.productId]) {
             const currentStock = productDocs[item.productId].stock;
@@ -388,7 +390,7 @@ Thank you for your order!
   const handleDelete = async (sale: Sale) => {
     try {
       await runTransaction(db, async (transaction) => {
-        // 1. READS FIRST
+        // --- 1. READS SECTION ---
         const productDocs: { [id: string]: any } = {};
         for (const item of sale.items) {
           if (!productDocs[item.productId]) {
@@ -403,21 +405,22 @@ Thank you for your order!
         const cRef = doc(db, 'customers', sale.customerId);
         const cDoc = await transaction.get(cRef);
 
-        // 2. WRITES SECOND
+        // --- 2. WRITES SECTION ---
         for (const item of sale.items) {
           if (productDocs[item.productId]) {
             const currentStock = productDocs[item.productId].stock;
             const newStock = currentStock + item.quantity;
             transaction.update(doc(db, 'products', item.productId), { stock: newStock });
-            productDocs[item.productId].stock = newStock; // Update local copy if same product appears twice
+            productDocs[item.productId].stock = newStock;
           }
         }
 
         if (cDoc.exists()) {
           const subtotal = sale.subtotal || sale.totalAmount;
           const pointsToSubtract = Math.floor(subtotal / 100000) * 30;
-          const currentPoints = cDoc.data().points || 0;
-          const currentOrderCount = cDoc.data().orderCount || 0;
+          const currentData = cDoc.data();
+          const currentPoints = currentData.points || 0;
+          const currentOrderCount = currentData.orderCount || 0;
           
           transaction.update(cRef, { 
             points: Math.max(0, currentPoints - pointsToSubtract),
@@ -426,6 +429,55 @@ Thank you for your order!
         }
 
         transaction.delete(doc(db, 'sales', sale.id));
+      });
+
+      notifyUndo({
+        message: `Order #${sale.orderNumber} deleted`,
+        undo: async () => {
+          await runTransaction(db, async (transaction) => {
+            // --- 1. READS SECTION ---
+            const productDocs: { [id: string]: any } = {};
+            for (const item of sale.items) {
+              if (!productDocs[item.productId]) {
+                const pRef = doc(db, 'products', item.productId);
+                const pDoc = await transaction.get(pRef);
+                if (pDoc.exists()) {
+                  productDocs[item.productId] = pDoc.data();
+                }
+              }
+            }
+
+            const cRef = doc(db, 'customers', sale.customerId);
+            const cDoc = await transaction.get(cRef);
+
+            // --- 2. WRITES SECTION ---
+            for (const item of sale.items) {
+              if (productDocs[item.productId]) {
+                const pRef = doc(db, 'products', item.productId);
+                transaction.update(pRef, { 
+                  stock: productDocs[item.productId].stock - item.quantity 
+                });
+              }
+            }
+
+            if (cDoc.exists()) {
+              const subtotal = sale.subtotal || sale.totalAmount;
+              const pointsToAdd = Math.floor(subtotal / 100000) * 30;
+              const currentData = cDoc.data();
+              transaction.update(cRef, { 
+                points: (currentData.points || 0) + pointsToAdd,
+                orderCount: (currentData.orderCount || 0) + 1
+              });
+            }
+
+            const { id, ...data } = sale;
+            transaction.set(doc(db, 'sales', id), {
+              ...data,
+              updatedAt: serverTimestamp(),
+              isUndone: true
+            });
+          });
+        }
       });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'sales');
@@ -615,11 +667,11 @@ Thank you for your order!
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Facebook Name</label>
-                      <input required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.facebookName} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
+                      <input required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.facebookName || ''} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Order Name</label>
-                      <input className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderName} onChange={e => setFormData({...formData, orderName: e.target.value})} />
+                      <input className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderName || ''} onChange={e => setFormData({...formData, orderName: e.target.value})} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -627,29 +679,29 @@ Thank you for your order!
                       <label className="text-xs font-semibold text-slate-600">Phone Number</label>
                       <input 
                         className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                        value={formData.phone} 
+                        value={formData.phone || ''} 
                         onChange={e => setFormData({...formData, phone: myanmarToEnglishNumerals(e.target.value)})} 
                       />
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Sales Date</label>
-                      <input type="date" required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} />
+                      <input type="date" required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
                     </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600">Address</label>
-                    <textarea rows={2} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                    <textarea rows={2} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Payment Method</label>
-                      <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.paymentMethod} onChange={e => setFormData({...formData, paymentMethod: e.target.value})}>
+                      <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.paymentMethod || 'Kpay'} onChange={e => setFormData({...formData, paymentMethod: e.target.value})}>
                         {paymentMethods.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
                     <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Delivery Date</label>
-                      <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.deliveryDate} onChange={e => setFormData({...formData, deliveryDate: e.target.value})} />
+                      <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.deliveryDate || ''} onChange={e => setFormData({...formData, deliveryDate: e.target.value})} />
                     </div>
                   </div>
                   <div className="space-y-1">
@@ -657,7 +709,7 @@ Thank you for your order!
                     <input 
                       type="number" 
                       className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                      value={formData.deliveryFees} 
+                      value={formData.deliveryFees ?? 0} 
                       onChange={e => setFormData({...formData, deliveryFees: parseFloat(e.target.value) || 0})} 
                     />
                   </div>
@@ -667,7 +719,7 @@ Thank you for your order!
                       rows={2} 
                       className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" 
                       placeholder="Add order notes..."
-                      value={formData.note} 
+                      value={formData.note || ''} 
                       onChange={e => setFormData({...formData, note: e.target.value})} 
                     />
                   </div>

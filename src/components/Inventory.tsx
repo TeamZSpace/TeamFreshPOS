@@ -47,6 +47,8 @@ interface Supplier {
   name: string;
 }
 
+import { notifyUndo } from '../lib/notifications';
+
 export function Inventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -177,8 +179,23 @@ export function Inventory() {
   };
 
   const handleDeleteProduct = async (id: string) => {
+    const productToDelete = products.find(p => p.id === id);
+    if (!productToDelete) return;
+
     try {
       await deleteDoc(doc(db, 'products', id));
+      
+      notifyUndo({
+        message: `Product "${productToDelete.name}" deleted`,
+        undo: async () => {
+          const { id: _, ...data } = productToDelete;
+          await addDoc(collection(db, 'products'), {
+            ...data,
+            createdAt: serverTimestamp(),
+            isUndone: true
+          });
+        }
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'products');
     }
@@ -445,15 +462,15 @@ export function Inventory() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Product Name</label>
-                  <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
+                  <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.name || ''} onChange={(e) => setFormData({ ...formData, name: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Product Code / SKU</label>
-                  <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productCode} onChange={(e) => setFormData({ ...formData, productCode: e.target.value })} />
+                  <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productCode || ''} onChange={(e) => setFormData({ ...formData, productCode: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Category</label>
-                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.categoryId} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}>
+                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.categoryId || ''} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}>
                     <option value="">Select Category</option>
                     {categories.map(c => {
                       const parent = c.parent ? categories.find(p => p.id === c.parent) : null;
@@ -464,30 +481,30 @@ export function Inventory() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Supplier</label>
-                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
+                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId || ''} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
                     <option value="">Select Supplier</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
-                  <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.purchaseDate} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
+                  <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.purchaseDate || ''} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Expiry Date</label>
-                  <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.expiryDate} onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })} />
+                  <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.expiryDate || ''} onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Landed Cost (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.landedCost} onChange={(e) => setFormData({ ...formData, landedCost: parseFloat(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.landedCost ?? 0} onChange={(e) => setFormData({ ...formData, landedCost: parseFloat(e.target.value) })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Selling Price (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.sellingPrice} onChange={(e) => setFormData({ ...formData, sellingPrice: parseFloat(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.sellingPrice ?? 0} onChange={(e) => setFormData({ ...formData, sellingPrice: parseFloat(e.target.value) })} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Stock</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.stock} onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.stock ?? 0} onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) })} />
                 </div>
               </div>
               <div className="flex justify-end gap-3 mt-8">

@@ -13,6 +13,8 @@ interface Category {
   parent: string | null;
 }
 
+import { notifyUndo } from '../lib/notifications';
+
 export function Categories() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,8 +74,23 @@ export function Categories() {
   };
 
   const handleDelete = async (id: string) => {
+    const categoryToDelete = categories.find(c => c.id === id);
+    if (!categoryToDelete) return;
+
     try {
       await deleteDoc(doc(db, 'categories', id));
+      
+      notifyUndo({
+        message: `Category "${categoryToDelete.name}" deleted`,
+        undo: async () => {
+          const { id: _, ...data } = categoryToDelete;
+          await addDoc(collection(db, 'categories'), {
+            ...data,
+            createdAt: serverTimestamp(),
+            isUndone: true
+          });
+        }
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'categories');
     }
@@ -236,7 +253,7 @@ export function Categories() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Category Name</label>
-                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} />
+                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.name || ''} onChange={e => setFormData({...formData, name: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Parent Category (Optional)</label>

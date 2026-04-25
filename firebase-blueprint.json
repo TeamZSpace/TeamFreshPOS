@@ -153,6 +153,21 @@
         "isAuto": { "type": "boolean" }
       },
       "required": ["timestamp", "data", "status"]
+    },
+    "Partner": {
+      "title": "Partner",
+      "description": "Business partners/shareholders.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "share": { "type": "number", "description": "Equity percentage" },
+        "investment": { "type": "number", "description": "Investment amount" },
+        "joinedAt": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      },
+      "required": ["name", "share", "investment"]
     }
   },
   "firestore": {
@@ -165,6 +180,7 @@
     "/expenses": { "schema": "Expense", "description": "Business expenses" },
     "/settings": { "schema": "Settings", "description": "App settings" },
     "/productMaster": { "schema": "ProductMaster", "description": "Master product list" },
-    "/backups": { "schema": "Backup", "description": "Database backups" }
+    "/backups": { "schema": "Backup", "description": "Database backups" },
+    "/partners": { "schema": "Partner", "description": "Business partners" }
   }
 }

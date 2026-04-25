@@ -22,6 +22,7 @@ export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarP
     { name: 'Categories', icon: Tags, color: 'text-rose-600 bg-rose-50' },
     { name: 'CRM', icon: Users, color: 'text-pink-600 bg-pink-50' },
     { name: 'Supplier', icon: Truck, color: 'text-rose-600 bg-rose-50' },
+    { name: 'Partners', icon: Users, color: 'text-cyan-600 bg-cyan-50' },
     { name: 'Backup', icon: Database, color: 'text-pink-600 bg-pink-50' },
     { name: 'Report', icon: TrendingUp, color: 'text-pink-600 bg-pink-50' },
     { name: 'Setting', icon: Settings, color: 'text-slate-600 bg-slate-50' },

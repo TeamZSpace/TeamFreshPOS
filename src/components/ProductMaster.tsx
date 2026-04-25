@@ -20,6 +20,8 @@ interface ProductDefinition {
   createdAt: any;
 }
 
+import { notifyUndo } from '../lib/notifications';
+
 export function ProductMaster() {
   const [products, setProducts] = useState<ProductDefinition[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -118,10 +120,23 @@ export function ProductMaster() {
   };
 
   const handleDelete = async () => {
-    if (!deleteConfirm.product) return;
+    const productToDelete = deleteConfirm.product;
+    if (!productToDelete) return;
     try {
-      await deleteDoc(doc(db, 'productMaster', deleteConfirm.product.id));
+      await deleteDoc(doc(db, 'productMaster', productToDelete.id));
       setDeleteConfirm({ isOpen: false, product: null });
+
+      notifyUndo({
+        message: `Product Template "${productToDelete.name}" deleted`,
+        undo: async () => {
+          const { id: _, ...data } = productToDelete;
+          await addDoc(collection(db, 'productMaster'), {
+            ...data,
+            createdAt: serverTimestamp(),
+            isUndone: true
+          });
+        }
+      });
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'productMaster');
     }
@@ -343,7 +358,7 @@ export function ProductMaster() {
                   <input 
                     type="text" 
                     className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                    value={formData.brand} 
+                    value={formData.brand || ''} 
                     onChange={(e) => setFormData({ ...formData, brand: e.target.value })} 
                     placeholder="e.g. Nature's Bounty"
                   />
@@ -353,7 +368,7 @@ export function ProductMaster() {
                   <input 
                     type="text" 
                     className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                    value={formData.category} 
+                    value={formData.category || ''} 
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })} 
                     placeholder="e.g. Vitamin C"
                   />
@@ -363,7 +378,7 @@ export function ProductMaster() {
                   <input 
                     type="text" 
                     className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                    value={formData.dosage} 
+                    value={formData.dosage || ''} 
                     onChange={(e) => setFormData({ ...formData, dosage: e.target.value })} 
                     placeholder="e.g. 500mg"
                   />
@@ -373,7 +388,7 @@ export function ProductMaster() {
                   <input 
                     type="text" 
                     className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                    value={formData.unitCount} 
+                    value={formData.unitCount || ''} 
                     onChange={(e) => setFormData({ ...formData, unitCount: e.target.value })} 
                     placeholder="e.g. 100 Count"
                   />
@@ -383,7 +398,7 @@ export function ProductMaster() {
                   <input 
                     type="text" 
                     className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                    value={formData.dosageForm} 
+                    value={formData.dosageForm || ''} 
                     onChange={(e) => setFormData({ ...formData, dosageForm: e.target.value })} 
                     placeholder="e.g. Capsules"
                   />
@@ -394,7 +409,7 @@ export function ProductMaster() {
                     required 
                     type="text" 
                     className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none bg-slate-50 font-mono" 
-                    value={formData.productCode} 
+                    value={formData.productCode || ''} 
                     readOnly
                   />
                 </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, serverTimestamp, addDoc } from 'firebase/firestore';
 import { Users, Search, Phone, MapPin, Calendar, Facebook, User, Award, Trash2, Edit2, Plus, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingBag, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
@@ -17,6 +17,8 @@ interface Customer {
   points: number;
   orderCount?: number;
 }
+
+import { notifyUndo } from '../lib/notifications';
 
 export function CRM() {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -81,8 +83,23 @@ export function CRM() {
   };
 
   const handleDelete = async (id: string) => {
+    const customerToDelete = customers.find(c => c.id === id);
+    if (!customerToDelete) return;
+
     try {
       await deleteDoc(doc(db, 'customers', id));
+      
+      notifyUndo({
+        message: `Customer "${customerToDelete.facebookName}" deleted`,
+        undo: async () => {
+          const { id: _, ...data } = customerToDelete;
+          await addDoc(collection(db, 'customers'), {
+            ...data,
+            createdAt: serverTimestamp(),
+            isUndone: true
+          });
+        }
+      });
     } catch (err) {
       handleFirestoreError(err, OperationType.DELETE, 'customers');
     }
@@ -256,34 +273,34 @@ export function CRM() {
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Facebook Name</label>
-                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.facebookName} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
+                <input required type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.facebookName || ''} onChange={e => setFormData({...formData, facebookName: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Order Name</label>
-                <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderName} onChange={e => setFormData({...formData, orderName: e.target.value})} />
+                <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderName || ''} onChange={e => setFormData({...formData, orderName: e.target.value})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Phone</label>
                 <input 
                   type="text" 
                   className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                  value={formData.phone} 
+                  value={formData.phone || ''} 
                   onChange={e => setFormData({...formData, phone: myanmarToEnglishNumerals(e.target.value)})} 
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Points</label>
-                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.points} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.points ?? 0} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Orders</label>
-                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderCount} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderCount ?? 0} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
                 </div>
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Address</label>
-                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} />
+                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.address || ''} onChange={e => setFormData({...formData, address: e.target.value})} />
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>

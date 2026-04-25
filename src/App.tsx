@@ -4,6 +4,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { Auth } from './components/Auth';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Sidebar } from './components/Sidebar';
+import { UndoToast } from './components/UndoToast';
 import { Dashboard } from './components/Dashboard';
 import { Inventory } from './components/Inventory';
 import { Purchase } from './components/Purchase';
@@ -17,11 +18,12 @@ import { Report } from './components/Report';
 import { ProductMaster } from './components/ProductMaster';
 import { Backup } from './components/Backup';
 import { FinancialReport } from './components/FinancialReport';
+import { Partners } from './components/Partners';
 import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList, Database, Heart } from 'lucide-react';
 import { collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/utils';
 
-export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup' | 'FinancialReport';
+export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup' | 'FinancialReport' | 'Partners';
 
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
@@ -125,6 +127,7 @@ export default function App() {
       case 'ProductMaster': return <ProductMaster />;
       case 'Backup': return <Backup />;
       case 'FinancialReport': return <FinancialReport />;
+      case 'Partners': return <Partners />;
       default: return <Dashboard />;
     }
   };
@@ -166,6 +169,7 @@ export default function App() {
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 min-h-[calc(100vh-12rem)] p-2 sm:p-4">
               {renderContent()}
             </div>
+            <UndoToast />
           </div>
         </main>
       </div>

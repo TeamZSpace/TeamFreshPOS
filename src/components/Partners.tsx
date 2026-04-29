@@ -357,7 +357,7 @@ export function Partners() {
                         required 
                         type="number" 
                         className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                        value={formData.investment ?? 0} 
+                        value={formData.investment || 0} 
                         onChange={e => setFormData({...formData, investment: parseFloat(e.target.value) || 0})} 
                       />
                     </div>
@@ -371,7 +371,7 @@ export function Partners() {
                         type="number" 
                         step="0.01"
                         className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                        value={formData.share ?? 0} 
+                        value={formData.share || 0} 
                         onChange={e => setFormData({...formData, share: parseFloat(e.target.value) || 0})} 
                       />
                     </div>

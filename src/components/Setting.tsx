@@ -115,52 +115,64 @@ export function Setting() {
       const sampleProducts = [
         {
           name: 'Vitamin C 1000mg',
+          productCode: 'PC-0001',
+          brand: "Nature's Bounty",
           categoryId: cat3.id,
           supplierId: sup1.id,
-          landedCost: 15000,
-          sellingPrice: 25000,
+          average_cost_price: 15000,
+          current_selling_price: 25000,
           margin: 10000,
-          stock: 50,
-          expiryDate: '2025-12-31',
+          total_stock: 50,
+          expiryDate: '12/2025',
           purchaseDate: today
         },
         {
           name: 'Hyaluronic Acid Serum',
+          productCode: 'PC-0002',
+          brand: 'Glow Recipe',
           categoryId: cat2.id,
           supplierId: sup1.id,
-          landedCost: 12000,
-          sellingPrice: 22000,
+          average_cost_price: 12000,
+          current_selling_price: 22000,
           margin: 10000,
-          stock: 30,
-          expiryDate: '2026-06-30',
+          total_stock: 30,
+          expiryDate: '06/2026',
           purchaseDate: today
         },
         {
           name: 'Organic Green Tea',
+          productCode: 'PC-0003',
+          brand: 'Zen Leaves',
           categoryId: cat4.id,
           supplierId: sup2.id,
-          landedCost: 8000,
-          sellingPrice: 15000,
+          average_cost_price: 8000,
+          current_selling_price: 15000,
           margin: 7000,
-          stock: 100,
-          expiryDate: '2025-08-15',
+          total_stock: 100,
+          expiryDate: '08/2025',
           purchaseDate: today
         },
         {
           name: 'Collagen Peptides',
+          productCode: 'PC-0004',
+          brand: 'Vital Proteins',
           categoryId: cat1.id,
           supplierId: sup2.id,
-          landedCost: 35000,
-          sellingPrice: 55000,
+          average_cost_price: 35000,
+          current_selling_price: 55000,
           margin: 20000,
-          stock: 15,
-          expiryDate: '2026-01-20',
+          total_stock: 15,
+          expiryDate: '01/2026',
           purchaseDate: today
         }
       ];
 
       for (const product of sampleProducts) {
-        await addDoc(prodRef, product);
+        await addDoc(prodRef, {
+          ...product,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
       }
 
       setSeedStatus('success');
@@ -211,7 +223,7 @@ export function Setting() {
             <label className="text-sm font-semibold text-slate-700">Opening Cash (MMK)</label>
             <div className="relative">
               <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.openingCash ?? 0} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
+              <input type="number" className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={settings.openingCash || 0} onChange={e => setSettings({...settings, openingCash: parseFloat(e.target.value) || 0})} />
             </div>
           </div>
           <button

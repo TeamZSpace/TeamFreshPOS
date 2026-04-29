@@ -2,25 +2,24 @@
   "entities": {
     "Product": {
       "title": "Product",
-      "description": "Inventory products for supplements and skin care.",
+      "description": "Inventory products.",
       "type": "object",
       "properties": {
         "name": { "type": "string", "description": "Product name" },
-        "productCode": { "type": "string", "description": "Unique product code or SKU" },
+        "current_selling_price": { "type": "number", "description": "Retail price" },
+        "average_cost_price": { "type": "number", "description": "Weighted average cost" },
+        "total_stock": { "type": "number", "description": "Current stock level" },
+        "categoryId": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "productCode": { "type": "string" },
         "brand": { "type": "string" },
         "dosage": { "type": "string" },
         "unitCount": { "type": "string" },
         "dosageForm": { "type": "string" },
-        "categoryId": { "type": "string", "description": "Reference to Category" },
-        "supplierId": { "type": "string", "description": "Reference to Supplier" },
-        "landedCost": { "type": "number", "description": "Cost including shipping" },
-        "sellingPrice": { "type": "number", "description": "Retail price" },
-        "margin": { "type": "number", "description": "Profit margin" },
-        "stock": { "type": "number", "description": "Current stock level" },
-        "expiryDate": { "type": "string", "format": "date", "description": "Product expiry date" },
-        "purchaseDate": { "type": "string", "format": "date", "description": "Last purchase date" }
+        "expiryDate": { "type": "string" },
+        "purchaseDate": { "type": "string" }
       },
-      "required": ["name", "landedCost", "sellingPrice", "stock"]
+      "required": ["name", "current_selling_price", "average_cost_price", "total_stock"]
     },
     "Purchase": {
       "title": "Purchase",
@@ -28,40 +27,50 @@
       "type": "object",
       "properties": {
         "date": { "type": "string", "format": "date-time" },
-        "productId": { "type": "string" },
-        "supplierId": { "type": "string" },
-        "quantity": { "type": "number" },
-        "unitCost": { "type": "number" },
+        "product_id": { "type": "string" },
+        "qty": { "type": "number" },
+        "purchase_price": { "type": "number" },
+        "current_selling_price": { "type": "number" },
         "shipping": { "type": "number" },
-        "totalAmount": { "type": "number" }
+        "supplierId": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "total_amount": { "type": "number" }
       },
-      "required": ["date", "productId", "quantity", "totalAmount"]
+      "required": ["date", "product_id", "qty", "purchase_price", "current_selling_price", "shipping", "total_amount"]
     },
     "Sale": {
       "title": "Sale",
       "description": "Customer sales records.",
       "type": "object",
       "properties": {
-        "orderNumber": { "type": "string" },
+        "order_no": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
-        "customerId": { "type": "string" },
+        "customer_id": { "type": "string" },
+        "total_amount": { "type": "number" },
+        "payment_status": { "type": "string", "enum": ["Paid", "Unpaid", "Partial"] },
         "items": {
           "type": "array",
           "items": {
             "type": "object",
             "properties": {
-              "productId": { "type": "string" },
-              "quantity": { "type": "number" },
-              "price": { "type": "number" }
+              "product_id": { "type": "string" },
+              "qty": { "type": "number" },
+              "sold_price_snapshot": { "type": "number" },
+              "cost_price_snapshot": { "type": "number" }
             }
           }
         },
         "paymentMethod": { "type": "string" },
         "address": { "type": "string" },
-        "deliveryDate": { "type": "string", "format": "date" },
-        "totalAmount": { "type": "number" }
+        "deliveryDate": { "type": "string" },
+        "subtotal": { "type": "number" },
+        "gross_amount": { "type": "number" },
+        "tax_amount": { "type": "number" },
+        "net_amount": { "type": "number" },
+        "deliveryFees": { "type": "number" },
+        "profit": { "type": "number" }
       },
-      "required": ["orderNumber", "date", "customerId", "items", "totalAmount"]
+      "required": ["order_no", "date", "customer_id", "items", "total_amount"]
     },
     "Customer": {
       "title": "Customer",

@@ -68,23 +68,8 @@ export function ProductMaster() {
     return () => unsub();
   }, []);
 
-  const generateNextCode = (type: 'Packing' | 'Travel') => {
-    const prefix = type === 'Packing' ? 'PC-' : 'PCT-';
-    const existingCodes = products
-      .filter(p => p.productCode.startsWith(prefix))
-      .map(p => {
-        const numPart = p.productCode.replace(prefix, '');
-        return parseInt(numPart, 10);
-      })
-      .filter(n => !isNaN(n));
-
-    const nextNum = existingCodes.length > 0 ? Math.max(...existingCodes) + 1 : 1;
-    return `${prefix}${nextNum.toString().padStart(4, '0')}`;
-  };
-
   const handleTypeChange = (type: 'Packing' | 'Travel') => {
-    const nextCode = generateNextCode(type);
-    setFormData({ ...formData, type, productCode: nextCode });
+    setFormData({ ...formData, type });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -223,8 +208,7 @@ export function ProductMaster() {
           </button>
           <button 
             onClick={() => {
-              const nextCode = generateNextCode('Packing');
-              setFormData({ ...formData, type: 'Packing', productCode: nextCode });
+              setFormData({ ...formData, type: 'Packing', productCode: '' });
               setIsModalOpen(true);
             }}
             className="flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-pink-100 font-semibold"
@@ -408,9 +392,10 @@ export function ProductMaster() {
                   <input 
                     required 
                     type="text" 
-                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none bg-slate-50 font-mono" 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none font-mono" 
                     value={formData.productCode || ''} 
-                    readOnly
+                    onChange={(e) => setFormData({ ...formData, productCode: e.target.value })}
+                    placeholder="e.g. CEN-A50-L25"
                   />
                 </div>
               </div>

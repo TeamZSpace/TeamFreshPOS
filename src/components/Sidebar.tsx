@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, ChevronRight, Database, FileText, Heart } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, ChevronRight, Database, FileText, Heart, History as HistoryIcon } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { MenuType } from '../App';
 
@@ -13,15 +13,16 @@ interface SidebarProps {
 export function Sidebar({ activeMenu, setActiveMenu, isOpen, onClose }: SidebarProps) {
   const menuItems: { name: MenuType; icon: React.ElementType; color: string }[] = [
     { name: 'Dashboard', icon: LayoutDashboard, color: 'text-pink-600 bg-pink-50' },
+    { name: 'Sales', icon: TrendingUp, color: 'text-rose-600 bg-rose-50' },
+    { name: 'Purchase', icon: ShoppingCart, color: 'text-pink-600 bg-pink-50' },
     { name: 'Inventory', icon: Package, color: 'text-pink-600 bg-pink-50' },
     { name: 'ProductMaster', icon: Tags, color: 'text-rose-600 bg-rose-50' },
-    { name: 'Purchase', icon: ShoppingCart, color: 'text-pink-600 bg-pink-50' },
-    { name: 'Sales', icon: TrendingUp, color: 'text-rose-600 bg-rose-50' },
     { name: 'FinancialReport', icon: FileText, color: 'text-pink-600 bg-pink-50' },
     { name: 'Expense', icon: Receipt, color: 'text-pink-600 bg-pink-50' },
     { name: 'Categories', icon: Tags, color: 'text-rose-600 bg-rose-50' },
     { name: 'CRM', icon: Users, color: 'text-pink-600 bg-pink-50' },
     { name: 'Supplier', icon: Truck, color: 'text-rose-600 bg-rose-50' },
+    { name: 'InventoryLogs', icon: HistoryIcon, color: 'text-pink-600 bg-pink-50' },
     { name: 'Partners', icon: Users, color: 'text-cyan-600 bg-cyan-50' },
     { name: 'Backup', icon: Database, color: 'text-pink-600 bg-pink-50' },
     { name: 'Report', icon: TrendingUp, color: 'text-pink-600 bg-pink-50' },

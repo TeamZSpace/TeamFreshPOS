@@ -9,17 +9,22 @@ import * as XLSX from 'xlsx';
 
 interface Sale {
   id: string;
-  orderNumber: string;
+  order_no: string;
   date: string;
-  customerId: string;
+  customer_id: string;
   customerName: string;
-  items: { productId: string; name: string; quantity: number; price: number }[];
+  items: { product_id: string; name: string; qty: number; sold_price_snapshot: number; cost_price_snapshot: number }[];
   paymentMethod: string;
+  payment_status: 'Paid' | 'Unpaid' | 'Partial';
   address: string;
   deliveryDate: string;
   subtotal: number;
+  gross_amount: number;
+  tax_amount: number;
+  net_amount: number;
   deliveryFees: number;
-  totalAmount: number;
+  total_amount: number;
+  profit?: number;
   note?: string;
 }
 
@@ -31,8 +36,9 @@ interface Product {
   dosage?: string;
   unitCount?: string;
   dosageForm?: string;
-  stock: number;
-  sellingPrice: number;
+  total_stock: number;
+  average_cost_price: number;
+  current_selling_price: number;
   categoryId: string;
 }
 
@@ -73,12 +79,14 @@ export function Sales() {
     orderName: '',
     phone: '',
     paymentMethod: 'Kpay',
+    payment_status: 'Paid' as const,
     address: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     deliveryDate: format(new Date(), 'yyyy-MM-dd'),
     deliveryFees: 0,
+    tax_amount: 0,
     note: '',
-    items: [] as { productId: string; name: string; quantity: number; price: number }[],
+    items: [] as { product_id: string; name: string; qty: number; sold_price_snapshot: number; cost_price_snapshot: number }[],
   });
   const [productSearch, setProductSearch] = useState('');
 
@@ -86,7 +94,17 @@ export function Sales() {
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
+      setSales(snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          total_amount: Number(data.total_amount || data.totalAmount || 0),
+          subtotal: Number(data.subtotal || 0),
+          gross_amount: Number(data.gross_amount || data.subtotal || 0),
+          order_no: data.order_no || data.orderNumber
+        } as Sale;
+      }));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -113,26 +131,26 @@ export function Sales() {
     const product = products.find(p => p.id === productId);
     if (!product) return;
     
-    const existingItem = formData.items.find(item => item.productId === productId);
+    const existingItem = formData.items.find(item => item.product_id === productId);
     if (existingItem) {
-      if (existingItem.quantity >= product.stock) {
-        alert(`Only ${product.stock} units of "${product.name}" are available in stock.`);
+      if (existingItem.qty >= product.total_stock) {
+        alert(`Only ${product.total_stock} units of "${product.name}" are available in stock.`);
         return;
       }
       setFormData({
         ...formData,
         items: formData.items.map(item => 
-          item.productId === productId ? { ...item, quantity: item.quantity + 1 } : item
+          item.product_id === productId ? { ...item, qty: item.qty + 1 } : item
         )
       });
     } else {
-      if (product.stock <= 0) {
+      if (product.total_stock <= 0) {
         alert(`"${product.name}" is out of stock.`);
         return;
       }
       setFormData({
         ...formData,
-        items: [...formData.items, { productId, name: product.name, quantity: 1, price: product.sellingPrice }]
+        items: [...formData.items, { product_id: productId, name: product.name, qty: 1, sold_price_snapshot: product.current_selling_price, cost_price_snapshot: product.average_cost_price }]
       });
     }
   };
@@ -140,7 +158,7 @@ export function Sales() {
   const handleRemoveItem = (productId: string) => {
     setFormData({
       ...formData,
-      items: formData.items.filter(item => item.productId !== productId)
+      items: formData.items.filter(item => item.product_id !== productId)
     });
   };
 
@@ -150,18 +168,18 @@ export function Sales() {
     const yy = String(saleDate.getFullYear()).slice(-2);
     const prefix = `${mm}${yy}`;
     
-    const monthSales = sales.filter(s => s.orderNumber?.startsWith(prefix));
+    const monthSales = sales.filter(s => s.order_no?.startsWith(prefix));
     const nextNum = String(monthSales.length + 1).padStart(4, '0');
     return `${prefix}${nextNum}`;
   };
 
   const downloadOrderNote = (saleData: any) => {
-    const itemsText = saleData.items.map((item: any) => `- ${item.name} x ${item.quantity} (${formatMMK(item.price)})`).join('\n');
+    const itemsText = saleData.items.map((item: any) => `- ${item.name} x ${item.qty} (${formatMMK(item.sold_price_snapshot)})`).join('\n');
     const noteText = saleData.note ? `\nNOTE:\n${saleData.note}\n` : '';
     const note = `
 ORDER NOTE
 -----------
-Order Number: ${saleData.orderNumber}
+Order Number: ${saleData.order_no}
 Date: ${saleData.date}
 Customer: ${saleData.customerName}
 Phone: ${formData.phone}
@@ -174,7 +192,7 @@ ${itemsText}
 
 Product Sales Total: ${formatMMK(saleData.subtotal)}
 Delivery Fees: ${formatMMK(saleData.deliveryFees)}
-TOTAL AMOUNT: ${formatMMK(saleData.totalAmount)}
+TOTAL AMOUNT: ${formatMMK(saleData.total_amount)}
 -----------
 Thank you for your order!
     `.trim();
@@ -183,7 +201,7 @@ Thank you for your order!
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Order_${saleData.orderNumber}.txt`;
+    link.download = `Order_${saleData.order_no}.txt`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -197,21 +215,25 @@ Thank you for your order!
 
     setIsSubmitting(true);
     try {
-      const subtotal = formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-      const totalAmount = subtotal + formData.deliveryFees;
+      const gross_amount = formData.items.reduce((sum, item) => sum + (item.sold_price_snapshot * item.qty), 0);
+      const subtotal = gross_amount;
+      const tax_amount = formData.tax_amount || 0;
+      const net_amount = gross_amount + tax_amount + formData.deliveryFees;
+      const totalAmount = net_amount;
+      
       const pointsToAdd = Math.floor(subtotal / 100000) * 30;
-      const orderNumber = editingSale ? editingSale.orderNumber : await generateOrderNumber(formData.date);
+      const orderNumber = editingSale ? editingSale.order_no : await generateOrderNumber(formData.date);
       const englishPhone = myanmarToEnglishNumerals(formData.phone);
 
       // 1. Handle Customer (CRM) - Query outside transaction
-      let customerId = '';
+      let customer_id = '';
       let existingCustomerData: any = null;
       const customerQuery = query(collection(db, 'customers'), where('facebookName', '==', formData.facebookName));
       const customerSnap = await getDocs(customerQuery);
       
       if (!customerSnap.empty) {
         const customerDoc = customerSnap.docs[0];
-        customerId = customerDoc.id;
+        customer_id = customerDoc.id;
         existingCustomerData = customerDoc.data();
       }
 
@@ -220,29 +242,29 @@ Thank you for your order!
         const productDocs: { [id: string]: any } = {};
         const productIds = new Set<string>();
         if (editingSale) {
-          editingSale.items.forEach(item => productIds.add(item.productId));
+          editingSale.items.forEach(item => productIds.add(item.product_id));
         }
-        formData.items.forEach(item => productIds.add(item.productId));
+        formData.items.forEach(item => productIds.add(item.product_id));
 
         for (const pid of productIds) {
           const pRef = doc(db, 'products', pid);
           const pDoc = await transaction.get(pRef);
           if (pDoc.exists()) {
             productDocs[pid] = pDoc.data();
-          } else if (formData.items.some(item => item.productId === pid)) {
+          } else if (formData.items.some(item => item.product_id === pid)) {
             throw new Error(`Product not found: ${pid}`);
           }
         }
 
         let customerDoc = null;
-        if (customerId) {
-          customerDoc = await transaction.get(doc(db, 'customers', customerId));
+        if (customer_id) {
+          customerDoc = await transaction.get(doc(db, 'customers', customer_id));
         }
 
         // --- 2. WRITES SECTION ---
         
         // Handle Customer (CRM)
-        if (customerId && customerDoc?.exists()) {
+        if (customer_id && customerDoc?.exists()) {
           const currentData = customerDoc.data();
           const currentPoints = currentData.points || 0;
           const currentOrderCount = currentData.orderCount || 0;
@@ -250,14 +272,14 @@ Thank you for your order!
           let finalOrderCount = currentOrderCount;
 
           if (editingSale) {
-            const oldSubtotal = editingSale.subtotal || editingSale.totalAmount;
+            const oldSubtotal = editingSale.subtotal || editingSale.total_amount;
             const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
             finalPoints = currentPoints - oldPoints + pointsToAdd;
           } else {
             finalOrderCount = currentOrderCount + 1;
           }
 
-          transaction.update(doc(db, 'customers', customerId), {
+          transaction.update(doc(db, 'customers', customer_id), {
             orderName: formData.orderName,
             phone: englishPhone,
             address: formData.address,
@@ -267,7 +289,7 @@ Thank you for your order!
           });
         } else {
           const customerRef = doc(collection(db, 'customers'));
-          customerId = customerRef.id;
+          customer_id = customerRef.id;
           transaction.set(customerRef, {
             facebookName: formData.facebookName,
             orderName: formData.orderName,
@@ -284,39 +306,67 @@ Thank you for your order!
         // Revert old stocks if editing
         if (editingSale) {
           for (const item of editingSale.items) {
-            if (productDocs[item.productId]) {
-              const currentStock = productDocs[item.productId].stock;
-              const newStock = currentStock + item.quantity;
-              transaction.update(doc(db, 'products', item.productId), { stock: newStock });
-              productDocs[item.productId].stock = newStock;
+            if (productDocs[item.product_id]) {
+              const currentStock = productDocs[item.product_id].total_stock || 0;
+              const newStock = currentStock + item.qty;
+              transaction.update(doc(db, 'products', item.product_id), { total_stock: newStock });
+              productDocs[item.product_id].total_stock = newStock;
             }
-          }
-        }
-
-        // Subtract new stocks
-        for (const item of formData.items) {
-          if (productDocs[item.productId]) {
-            const currentStock = productDocs[item.productId].stock;
-            const newStock = currentStock - item.quantity;
-            transaction.update(doc(db, 'products', item.productId), { stock: newStock });
-            productDocs[item.productId].stock = newStock;
           }
         }
 
         // Add/Update Sale Record
         const saleRef = editingSale ? doc(db, 'sales', editingSale.id) : doc(collection(db, 'sales'));
+
+        // Subtract new stocks
+        for (const item of formData.items) {
+          if (productDocs[item.product_id]) {
+            const currentStock = productDocs[item.product_id].total_stock || 0;
+            const newStock = currentStock - item.qty;
+            transaction.update(doc(db, 'products', item.product_id), { total_stock: newStock });
+            
+            // Record Inventory Log
+            const logRef = doc(collection(db, 'inventory_logs'));
+            transaction.set(logRef, {
+              product_id: item.product_id,
+              productName: item.name,
+              type: 'OUT',
+              qty: item.qty,
+              referenceId: saleRef.id,
+              reason: editingSale ? 'Sale Updated' : 'Sale Created',
+              date: serverTimestamp(),
+              previousQty: currentStock,
+              newQty: newStock,
+            });
+
+            productDocs[item.product_id].total_stock = newStock;
+          }
+        }
+
+        // Calculate Profit from snapshotted costs
+        let totalProfit = 0;
+        formData.items.forEach(item => {
+          const itemProfit = (item.sold_price_snapshot - item.cost_price_snapshot) * item.qty;
+          totalProfit += itemProfit;
+        });
+
         const saleData = {
-          orderNumber,
+          order_no: orderNumber,
           date: formData.date,
-          customerId,
+          customer_id: customer_id,
           customerName: formData.orderName || formData.facebookName,
           items: formData.items,
           paymentMethod: formData.paymentMethod,
+          payment_status: formData.payment_status,
           address: formData.address,
           deliveryDate: formData.deliveryDate,
           subtotal,
+          gross_amount,
+          tax_amount,
+          net_amount,
           deliveryFees: formData.deliveryFees,
-          totalAmount,
+          total_amount: totalAmount,
+          profit: totalProfit,
           note: formData.note,
           updatedAt: serverTimestamp(),
         };
@@ -331,7 +381,7 @@ Thank you for your order!
 
       // Download order note
       downloadOrderNote({
-        orderNumber,
+        order_no: orderNumber,
         date: formData.date,
         customerName: formData.orderName || formData.facebookName,
         items: formData.items,
@@ -340,7 +390,7 @@ Thank you for your order!
         deliveryDate: formData.deliveryDate,
         subtotal,
         deliveryFees: formData.deliveryFees,
-        totalAmount,
+        total_amount: totalAmount,
         note: formData.note
       });
 
@@ -353,17 +403,19 @@ Thank you for your order!
   };
 
   const openEditModal = (sale: Sale) => {
-    const customer = customers.find(c => c.id === sale.customerId);
+    const customer = customers.find(c => c.id === sale.customer_id);
     setEditingSale(sale);
     setFormData({
       facebookName: customer?.facebookName || '',
       orderName: sale.customerName,
       phone: customer?.phone || '',
       paymentMethod: sale.paymentMethod,
+      payment_status: sale.payment_status || 'Paid',
       address: sale.address,
       date: sale.date.split('T')[0],
       deliveryDate: sale.deliveryDate,
       deliveryFees: sale.deliveryFees || 0,
+      tax_amount: sale.tax_amount || 0,
       note: sale.note || '',
       items: sale.items,
     });
@@ -378,10 +430,12 @@ Thank you for your order!
       orderName: '', 
       phone: '', 
       paymentMethod: 'Kpay', 
+      payment_status: 'Paid',
       address: '', 
       date: format(new Date(), 'yyyy-MM-dd'), 
       deliveryDate: format(new Date(), 'yyyy-MM-dd'), 
       deliveryFees: 0,
+      tax_amount: 0,
       note: '',
       items: [] 
     });
@@ -393,30 +447,30 @@ Thank you for your order!
         // --- 1. READS SECTION ---
         const productDocs: { [id: string]: any } = {};
         for (const item of sale.items) {
-          if (!productDocs[item.productId]) {
-            const pRef = doc(db, 'products', item.productId);
+          if (!productDocs[item.product_id]) {
+            const pRef = doc(db, 'products', item.product_id);
             const pDoc = await transaction.get(pRef);
             if (pDoc.exists()) {
-              productDocs[item.productId] = pDoc.data();
+              productDocs[item.product_id] = pDoc.data();
             }
           }
         }
 
-        const cRef = doc(db, 'customers', sale.customerId);
+        const cRef = doc(db, 'customers', sale.customer_id);
         const cDoc = await transaction.get(cRef);
 
         // --- 2. WRITES SECTION ---
         for (const item of sale.items) {
-          if (productDocs[item.productId]) {
-            const currentStock = productDocs[item.productId].stock;
-            const newStock = currentStock + item.quantity;
-            transaction.update(doc(db, 'products', item.productId), { stock: newStock });
-            productDocs[item.productId].stock = newStock;
+          if (productDocs[item.product_id]) {
+            const currentStock = productDocs[item.product_id].total_stock || 0;
+            const newStock = currentStock + item.qty;
+            transaction.update(doc(db, 'products', item.product_id), { total_stock: newStock });
+            productDocs[item.product_id].total_stock = newStock;
           }
         }
 
         if (cDoc.exists()) {
-          const subtotal = sale.subtotal || sale.totalAmount;
+          const subtotal = sale.subtotal || sale.total_amount;
           const pointsToSubtract = Math.floor(subtotal / 100000) * 30;
           const currentData = cDoc.data();
           const currentPoints = currentData.points || 0;
@@ -429,39 +483,53 @@ Thank you for your order!
         }
 
         transaction.delete(doc(db, 'sales', sale.id));
+
+        // Log the return to inventory
+        sale.items.forEach(item => {
+          const logRef = doc(collection(db, 'inventory_logs'));
+          transaction.set(logRef, {
+            product_id: item.product_id,
+            productName: item.name,
+            type: 'IN',
+            qty: item.qty,
+            referenceId: sale.id,
+            reason: 'Sale Deleted (Stock Returned)',
+            date: serverTimestamp(),
+          });
+        });
       });
 
       notifyUndo({
-        message: `Order #${sale.orderNumber} deleted`,
+        message: `Order #${sale.order_no} deleted`,
         undo: async () => {
           await runTransaction(db, async (transaction) => {
             // --- 1. READS SECTION ---
             const productDocs: { [id: string]: any } = {};
             for (const item of sale.items) {
-              if (!productDocs[item.productId]) {
-                const pRef = doc(db, 'products', item.productId);
+              if (!productDocs[item.product_id]) {
+                const pRef = doc(db, 'products', item.product_id);
                 const pDoc = await transaction.get(pRef);
                 if (pDoc.exists()) {
-                  productDocs[item.productId] = pDoc.data();
+                  productDocs[item.product_id] = pDoc.data();
                 }
               }
             }
 
-            const cRef = doc(db, 'customers', sale.customerId);
+            const cRef = doc(db, 'customers', sale.customer_id);
             const cDoc = await transaction.get(cRef);
 
             // --- 2. WRITES SECTION ---
             for (const item of sale.items) {
-              if (productDocs[item.productId]) {
-                const pRef = doc(db, 'products', item.productId);
+              if (productDocs[item.product_id]) {
+                const pRef = doc(db, 'products', item.product_id);
                 transaction.update(pRef, { 
-                  stock: productDocs[item.productId].stock - item.quantity 
+                  total_stock: (productDocs[item.product_id].total_stock || 0) - item.qty 
                 });
               }
             }
 
             if (cDoc.exists()) {
-              const subtotal = sale.subtotal || sale.totalAmount;
+              const subtotal = sale.subtotal || sale.total_amount;
               const pointsToAdd = Math.floor(subtotal / 100000) * 30;
               const currentData = cDoc.data();
               transaction.update(cRef, { 
@@ -485,22 +553,24 @@ Thank you for your order!
   };
 
   const filteredSales = sales.filter(s => 
-    s.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.customerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.order_no || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'date', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedSales.map(s => ({
-      'Order #': s.orderNumber,
+      'Order #': s.order_no,
       'Date': s.date,
       'Customer': s.customerName,
-      'Items': s.items.map(i => `${i.name} x${i.quantity}`).join(', '),
+      'Items': s.items.map(i => `${i.name} x${i.qty}`).join(', '),
       'Payment': s.paymentMethod,
-      'Subtotal': s.subtotal,
+      'Status': s.payment_status,
+      'Gross Amount': s.gross_amount || s.subtotal,
+      'Tax': s.tax_amount || 0,
       'Delivery': s.deliveryFees,
-      'Total': s.totalAmount,
+      'Net Total': s.net_amount || s.total_amount,
       'Address': s.address,
       'Note': s.note || ''
     }));
@@ -551,8 +621,8 @@ Thank you for your order!
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
-              <th onClick={() => requestSort('orderNumber')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Order #{getSortIcon('orderNumber')}</div>
+              <th onClick={() => requestSort('order_no')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Order #{getSortIcon('order_no')}</div>
               </th>
               <th onClick={() => requestSort('date')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Date{getSortIcon('date')}</div>
@@ -564,11 +634,17 @@ Thank you for your order!
               <th onClick={() => requestSort('paymentMethod')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Payment{getSortIcon('paymentMethod')}</div>
               </th>
+              <th onClick={() => requestSort('payment_status')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Status{getSortIcon('payment_status')}</div>
+              </th>
               <th onClick={() => requestSort('deliveryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Delivery{getSortIcon('deliveryDate')}</div>
               </th>
-              <th onClick={() => requestSort('totalAmount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Total{getSortIcon('totalAmount')}</div>
+              <th onClick={() => requestSort('subtotal')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Sold Price{getSortIcon('subtotal')}</div>
+              </th>
+              <th onClick={() => requestSort('total_amount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Total{getSortIcon('total_amount')}</div>
               </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
@@ -576,7 +652,7 @@ Thank you for your order!
           <tbody className="divide-y divide-slate-100">
             {sortedSales.map((sale) => (
               <tr key={sale.id} className="hover:bg-slate-50 transition-colors group">
-                <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500">{sale.orderNumber}</td>
+                <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500">{sale.order_no}</td>
                 <td className="px-6 py-4 text-slate-600 text-xs">{format(new Date(sale.date), 'MMM d, yyyy')}</td>
                 <td className="px-6 py-4">
                   <div className="flex flex-col">
@@ -588,7 +664,7 @@ Thank you for your order!
                   <div className="flex flex-wrap gap-1">
                     {sale.items.map((item, i) => (
                       <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
-                        {item.quantity}x {item.name}
+                        {item.qty}x {item.name}
                       </span>
                     ))}
                   </div>
@@ -601,14 +677,30 @@ Thank you for your order!
                     {sale.paymentMethod}
                   </span>
                 </td>
+                <td className="px-6 py-4">
+                  <span className={cn(
+                    "px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider",
+                    sale.payment_status === 'Paid' ? "bg-emerald-50 text-emerald-700" : 
+                    sale.payment_status === 'Partial' ? "bg-amber-50 text-amber-700" : "bg-rose-50 text-rose-700"
+                  )}>
+                    {sale.payment_status || 'Paid'}
+                  </span>
+                </td>
                 <td className="px-6 py-4 text-slate-600 text-xs">
                   {sale.deliveryDate ? format(new Date(sale.deliveryDate), 'MMM d, yyyy') : '-'}
                 </td>
+                <td className="px-6 py-4 text-right font-medium text-slate-600">
+                  {formatMMK(sale.gross_amount || sale.subtotal)}
+                </td>
                 <td className="px-6 py-4 text-right font-bold text-slate-900">
                   <div className="flex flex-col items-end">
-                    <span>{formatMMK(sale.totalAmount)}</span>
-                    {sale.deliveryFees > 0 && (
-                      <span className="text-[10px] text-slate-400 font-normal">Incl. {formatMMK(sale.deliveryFees)} Delivery Fees</span>
+                    <span>{formatMMK(sale.total_amount)}</span>
+                    {(sale.deliveryFees > 0 || sale.tax_amount > 0) && (
+                      <span className="text-[10px] text-slate-400 font-normal">
+                        Incl. {sale.deliveryFees > 0 ? `${formatMMK(sale.deliveryFees)} Deli` : ''} 
+                        {sale.deliveryFees > 0 && sale.tax_amount > 0 ? ' + ' : ''}
+                        {sale.tax_amount > 0 ? `${formatMMK(sale.tax_amount)} Tax` : ''}
+                      </span>
                     )}
                   </div>
                 </td>
@@ -700,18 +792,39 @@ Thank you for your order!
                       </select>
                     </div>
                     <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Payment Status</label>
+                      <select className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.payment_status || 'Paid'} onChange={e => setFormData({...formData, payment_status: e.target.value as any})}>
+                        <option value="Paid">Paid</option>
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Partial">Partial</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
                       <label className="text-xs font-semibold text-slate-600">Delivery Date</label>
                       <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.deliveryDate || ''} onChange={e => setFormData({...formData, deliveryDate: e.target.value})} />
                     </div>
                   </div>
-                  <div className="space-y-1">
-                    <label className="text-xs font-semibold text-slate-600">Delivery Fees (MMK)</label>
-                    <input 
-                      type="number" 
-                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
-                      value={formData.deliveryFees ?? 0} 
-                      onChange={e => setFormData({...formData, deliveryFees: parseFloat(e.target.value) || 0})} 
-                    />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Delivery Fees (MMK)</label>
+                      <input 
+                        type="number" 
+                        className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                        value={formData.deliveryFees || 0} 
+                        onChange={e => setFormData({...formData, deliveryFees: parseFloat(e.target.value) || 0})} 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-slate-600">Tax Amount (MMK)</label>
+                      <input 
+                        type="number" 
+                        className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                        value={formData.tax_amount || 0} 
+                        onChange={e => setFormData({...formData, tax_amount: parseFloat(e.target.value) || 0})} 
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-xs font-semibold text-slate-600">Note</label>
@@ -758,7 +871,7 @@ Thank you for your order!
                     >
                       <option value="">Select a product...</option>
                       {products
-                        .filter(p => p.stock > 0 && (
+                        .filter(p => (p.total_stock || 0) > 0 && (
                           p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
                           (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())) ||
                           (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()))
@@ -770,7 +883,7 @@ Thank you for your order!
                           const brandDisplay = p.brand ? ` - ${p.brand}` : '';
                           return (
                             <option key={p.id} value={p.id}>
-                              {p.name}{brandDisplay}{codeDisplay}{catDisplay} ({formatMMK(p.sellingPrice)} - {p.stock} in stock)
+                              {p.name}{brandDisplay}{codeDisplay}{catDisplay} ({formatMMK(p.current_selling_price)} - {p.total_stock} in stock)
                             </option>
                           );
                         })}
@@ -789,28 +902,28 @@ Thank you for your order!
                           <div key={index} className="flex items-center justify-between bg-white p-3 rounded-lg border border-slate-100 shadow-sm">
                             <div className="flex flex-col">
                               <span className="text-sm font-bold text-slate-900">{item.name}</span>
-                              <span className="text-xs text-slate-500">{formatMMK(item.price)} each</span>
+                              <span className="text-xs text-slate-500">{formatMMK(item.sold_price_snapshot)} each</span>
                             </div>
                             <div className="flex items-center gap-4">
                               <div className="flex items-center gap-2">
                                 <button type="button" onClick={() => {
                                   const newItems = [...formData.items];
-                                  if (newItems[index].quantity > 1) {
-                                    newItems[index].quantity--;
+                                  if (newItems[index].qty > 1) {
+                                    newItems[index].qty--;
                                     setFormData({...formData, items: newItems});
                                   }
                                 }} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded hover:bg-slate-200">-</button>
-                                <span className="text-sm font-bold w-4 text-center">{item.quantity}</span>
+                                <span className="text-sm font-bold w-4 text-center">{item.qty}</span>
                                 <button type="button" onClick={() => {
                                   const newItems = [...formData.items];
-                                  const product = products.find(p => p.id === item.productId);
-                                  if (product && newItems[index].quantity < product.stock) {
-                                    newItems[index].quantity++;
+                                  const product = products.find(p => p.id === item.product_id);
+                                  if (product && newItems[index].qty < product.total_stock) {
+                                    newItems[index].qty++;
                                     setFormData({...formData, items: newItems});
                                   }
                                 }} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded hover:bg-slate-200">+</button>
                               </div>
-                              <button type="button" onClick={() => handleRemoveItem(item.productId)} className="text-pink-500 hover:text-pink-700">
+                              <button type="button" onClick={() => handleRemoveItem(item.product_id)} className="text-pink-500 hover:text-pink-700">
                                 <Trash2 className="w-4 h-4" />
                               </button>
                             </div>
@@ -822,9 +935,15 @@ Thank you for your order!
 
                   <div className="pt-4 border-t border-slate-100 space-y-2">
                     <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 font-semibold text-pink-600">Product Sales Total:</span>
+                      <span className="text-slate-500 font-semibold text-pink-600">Total Sold Price:</span>
                       <span className="text-pink-600 font-bold">
-                        {formatMMK(formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0))}
+                        {formatMMK(formData.items.reduce((sum, item) => sum + (item.sold_price_snapshot * item.qty), 0))}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-slate-500">Tax Amount:</span>
+                      <span className="text-slate-700 font-semibold">
+                        {formatMMK(formData.tax_amount)}
                       </span>
                     </div>
                     <div className="flex items-center justify-between text-sm">
@@ -833,10 +952,14 @@ Thank you for your order!
                         {formatMMK(formData.deliveryFees)}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-100">
-                      <span className="text-slate-500 font-bold">Total Amount (Customer Pays):</span>
-                      <span className="text-2xl font-black text-slate-900">
-                        {formatMMK(formData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + formData.deliveryFees)}
+                    <div className="flex items-center justify-between pt-3 mt-2 border-t-2 border-slate-200">
+                      <span className="text-lg font-black text-slate-900">Total Amount:</span>
+                      <span className="text-3xl font-black text-rose-600">
+                        {formatMMK(
+                          formData.items.reduce((sum, item) => sum + (item.sold_price_snapshot * item.qty), 0) + 
+                          formData.tax_amount + 
+                          formData.deliveryFees
+                        )}
                       </span>
                     </div>
                   </div>
@@ -874,7 +997,7 @@ Thank you for your order!
       <ConfirmModal
         isOpen={deleteConfirm.isOpen}
         title="Delete Sale Order"
-        message={`Are you sure you want to delete order #${deleteConfirm.sale?.orderNumber}? This will revert product stock and customer points.`}
+        message={`Are you sure you want to delete order #${deleteConfirm.sale?.order_no}? This will revert product stock and customer points.`}
         onConfirm={() => deleteConfirm.sale && handleDelete(deleteConfirm.sale)}
         onCancel={() => setDeleteConfirm({ isOpen: false, sale: null })}
         confirmText="Delete Order"

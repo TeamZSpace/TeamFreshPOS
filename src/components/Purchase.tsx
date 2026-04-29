@@ -10,12 +10,15 @@ import * as XLSX from 'xlsx';
 interface Purchase {
   id: string;
   date: string;
-  productId: string;
+  product_id: string;
   supplierId: string;
-  quantity: number;
-  unitCost: number;
+  categoryId: string;
+  qty: number;
+  purchase_price: number;
+  current_selling_price: number;
   shipping: number;
-  totalAmount: number;
+  total_amount: number;
+  expiryDate?: string;
 }
 
 interface Product {
@@ -26,9 +29,24 @@ interface Product {
   dosage?: string;
   unitCount?: string;
   dosageForm?: string;
-  stock: number;
-  landedCost: number;
+  total_stock: number;
+  average_cost_price: number;
+  current_selling_price: number;
   categoryId: string;
+  supplierId?: string;
+  expiryDate?: string;
+  purchaseDate?: string;
+}
+
+interface MasterProduct {
+  id: string;
+  name: string;
+  productCode: string;
+  brand?: string;
+  category?: string;
+  dosage?: string;
+  unitCount?: string;
+  dosageForm?: string;
 }
 
 interface Category {
@@ -47,6 +65,7 @@ import { notifyUndo } from '../lib/notifications';
 export function Purchase() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -56,12 +75,16 @@ export function Purchase() {
     purchase: null
   });
   const [formData, setFormData] = useState({
-    productId: '',
+    product_id: '',
     supplierId: '',
-    quantity: 0,
-    unitCost: 0,
+    categoryId: '',
+    qty: 0,
+    purchase_price: 0,
+    current_selling_price: 0,
     shipping: 0,
     date: format(new Date(), 'yyyy-MM-dd'),
+    expiryDate: '',
+    productCode: '',
   });
   const [productSearch, setProductSearch] = useState('');
 
@@ -82,52 +105,151 @@ export function Purchase() {
       setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'categories'));
 
+    const unsubMaster = onSnapshot(collection(db, 'productMaster'), (snapshot) => {
+      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
+
     return () => {
       unsubPurchases();
       unsubProducts();
       unsubSuppliers();
       unsubCategories();
+      unsubMaster();
     };
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const totalAmount = (formData.quantity * formData.unitCost) + formData.shipping;
-      const newLandedCost = totalAmount / formData.quantity;
+      const newPurchaseTotal = (formData.qty * formData.purchase_price) + formData.shipping;
 
       await runTransaction(db, async (transaction) => {
-        const productRef = doc(db, 'products', formData.productId);
+        const productRef = doc(db, 'products', formData.product_id);
         const productDoc = await transaction.get(productRef);
+        const masterProduct = masterProducts.find(p => p.id === formData.product_id);
         
-        if (!productDoc.exists()) throw new Error("Product not found");
+        if (!productDoc.exists() && !masterProduct) {
+          throw new Error("Product not found in Master or Inventory");
+        }
         
-        const currentData = productDoc.data() as Product;
+        const currentData = productDoc.exists() 
+          ? productDoc.data() as Product 
+          : {
+              id: masterProduct!.id,
+              name: masterProduct!.name,
+              productCode: masterProduct!.productCode,
+              brand: masterProduct!.brand || '',
+              dosage: masterProduct!.dosage || '',
+              unitCount: masterProduct!.unitCount || '',
+              dosageForm: masterProduct!.dosageForm || '',
+              total_stock: 0,
+              average_cost_price: 0,
+              categoryId: formData.categoryId,
+            } as Product;
         
+        const existingQty = currentData.total_stock || 0;
+        const existingCost = currentData.average_cost_price || 0;
+        let weightedLandedCost = existingCost;
+
         if (editingPurchase) {
-          // Revert old purchase stock first
-          const stockDiff = formData.quantity - editingPurchase.quantity;
-          transaction.update(productRef, {
-            stock: currentData.stock + stockDiff,
-            landedCost: newLandedCost,
+          const oldQty = editingPurchase.qty;
+          const oldTotal = editingPurchase.total_amount;
+          
+          // Revert old purchase first to get pre-purchase state
+          const revertedQty = existingQty - oldQty;
+          const revertedValue = (existingQty * existingCost) - oldTotal;
+          
+          // Apply new purchase to reverted state
+          const finalQty = revertedQty + formData.qty;
+          const finalValue = revertedValue + newPurchaseTotal;
+          
+          weightedLandedCost = finalQty > 0 ? finalValue / finalQty : (formData.qty > 0 ? newPurchaseTotal / formData.qty : existingCost);
+
+          // Handle if product changed (rare but possible)
+          if (editingPurchase.product_id !== formData.product_id) {
+            const oldProductRef = doc(db, 'products', editingPurchase.product_id);
+            const oldProductDoc = await transaction.get(oldProductRef);
+            if (oldProductDoc.exists()) {
+              const oldProd = oldProductDoc.data() as Product;
+              const adjQty = oldProd.total_stock - oldQty;
+              const adjValue = (oldProd.total_stock * oldProd.average_cost_price) - oldTotal;
+              transaction.update(oldProductRef, {
+                total_stock: adjQty,
+                average_cost_price: adjQty > 0 ? adjValue / adjQty : oldProd.average_cost_price
+              });
+            }
+            // For the new product, it's like a fresh purchase added to existing
+            const totalQtyNew = existingQty + formData.qty;
+            const totalValueNew = (existingQty * existingCost) + newPurchaseTotal;
+            weightedLandedCost = totalQtyNew > 0 ? totalValueNew / totalQtyNew : (formData.qty > 0 ? newPurchaseTotal / formData.qty : existingCost);
+          }
+
+          transaction.set(productRef, {
+            ...currentData,
+            total_stock: editingPurchase.product_id === formData.product_id ? (existingQty - oldQty + formData.qty) : (existingQty + formData.qty),
+            average_cost_price: weightedLandedCost,
+            current_selling_price: formData.current_selling_price,
+            categoryId: formData.categoryId,
+            supplierId: formData.supplierId,
+            expiryDate: formData.expiryDate,
             purchaseDate: formData.date
-          });
+          }, { merge: true });
+
           transaction.update(doc(db, 'purchases', editingPurchase.id), {
             ...formData,
-            totalAmount,
+            total_amount: newPurchaseTotal,
             updatedAt: serverTimestamp(),
           });
-        } else {
-          transaction.update(productRef, {
-            stock: currentData.stock + formData.quantity,
-            landedCost: newLandedCost,
-            purchaseDate: formData.date
+
+          // Record Inventory Log
+          const logRef = doc(collection(db, 'inventory_logs'));
+          transaction.set(logRef, {
+            product_id: formData.product_id,
+            productName: currentData.name,
+            type: 'ADJUST',
+            qty: formData.qty - oldQty,
+            referenceId: editingPurchase.id,
+            reason: 'Purchase Updated',
+            date: serverTimestamp(),
+            previousQty: existingQty,
+            newQty: editingPurchase.product_id === formData.product_id ? (existingQty - oldQty + formData.qty) : (existingQty + formData.qty)
           });
+        } else {
+          const totalQty = existingQty + formData.qty;
+          const totalValue = (existingQty * existingCost) + newPurchaseTotal;
+          weightedLandedCost = totalQty > 0 ? totalValue / totalQty : (formData.qty > 0 ? newPurchaseTotal / formData.qty : existingCost);
+
+          transaction.set(productRef, {
+            ...currentData,
+            total_stock: totalQty,
+            average_cost_price: weightedLandedCost,
+            current_selling_price: formData.current_selling_price,
+            categoryId: formData.categoryId,
+            supplierId: formData.supplierId,
+            expiryDate: formData.expiryDate,
+            purchaseDate: formData.date
+          }, { merge: true });
+
           const purchaseRef = doc(collection(db, 'purchases'));
+          const purchaseId = purchaseRef.id;
           transaction.set(purchaseRef, {
             ...formData,
-            totalAmount,
+            total_amount: newPurchaseTotal,
             createdAt: serverTimestamp(),
+          });
+
+          // Record Inventory Log
+          const logRef = doc(collection(db, 'inventory_logs'));
+          transaction.set(logRef, {
+            product_id: formData.product_id,
+            productName: currentData.name,
+            type: 'IN',
+            qty: formData.qty,
+            referenceId: purchaseId,
+            reason: 'New Purchase',
+            date: serverTimestamp(),
+            previousQty: existingQty,
+            newQty: totalQty
           });
         }
       });
@@ -141,12 +263,16 @@ export function Purchase() {
   const openEditModal = (p: Purchase) => {
     setEditingPurchase(p);
     setFormData({
-      productId: p.productId,
+      product_id: p.product_id,
       supplierId: p.supplierId,
-      quantity: p.quantity,
-      unitCost: p.unitCost,
+      categoryId: p.categoryId,
+      qty: p.qty,
+      purchase_price: p.purchase_price,
+      current_selling_price: p.current_selling_price,
       shipping: p.shipping,
       date: p.date.split('T')[0],
+      expiryDate: p.expiryDate || '',
+      productCode: products.find(prod => prod.id === p.product_id)?.productCode || '',
     });
     setIsModalOpen(true);
   };
@@ -154,38 +280,81 @@ export function Purchase() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingPurchase(null);
-    setFormData({ productId: '', supplierId: '', quantity: 0, unitCost: 0, shipping: 0, date: format(new Date(), 'yyyy-MM-dd') });
+    setFormData({ 
+      product_id: '', 
+      supplierId: '', 
+      categoryId: '',
+      qty: 0, 
+      purchase_price: 0, 
+      current_selling_price: 0,
+      shipping: 0, 
+      date: format(new Date(), 'yyyy-MM-dd'),
+      expiryDate: '',
+      productCode: '',
+    });
   };
 
   const handleDelete = async (purchase: Purchase) => {
     try {
       await runTransaction(db, async (transaction) => {
         // 1. READS FIRST
-        const productRef = doc(db, 'products', purchase.productId);
+        const productRef = doc(db, 'products', purchase.product_id);
         const productDoc = await transaction.get(productRef);
         
         // 2. WRITES SECOND
         if (productDoc.exists()) {
+          const product = productDoc.data() as Product;
+          const currentQty = product.total_stock || 0;
+          const currentCost = product.average_cost_price || 0;
+          const purchaseQty = purchase.qty;
+          const purchaseTotal = purchase.total_amount;
+
+          const newQty = currentQty - purchaseQty;
+          const newValue = (currentQty * currentCost) - purchaseTotal;
+          
           transaction.update(productRef, {
-            stock: productDoc.data().stock - purchase.quantity
+            total_stock: newQty,
+            average_cost_price: newQty > 0 ? newValue / newQty : currentCost
           });
         }
         transaction.delete(doc(db, 'purchases', purchase.id));
+
+        // Record Inventory Log
+        const logRef = doc(collection(db, 'inventory_logs'));
+        transaction.set(logRef, {
+          product_id: purchase.product_id,
+          productName: products.find(p => p.id === purchase.product_id)?.name || 'Unknown',
+          type: 'OUT',
+          qty: purchase.qty,
+          referenceId: purchase.id,
+          reason: 'Purchase Deleted',
+          date: serverTimestamp(),
+        });
       });
 
-      const productName = products.find(p => p.id === purchase.productId)?.name || 'Product';
+      const productName = products.find(p => p.id === purchase.product_id)?.name || 'Product';
       notifyUndo({
         message: `Purchase of ${productName} deleted`,
         undo: async () => {
           await runTransaction(db, async (transaction) => {
             // 1. READS FIRST
-            const productRef = doc(db, 'products', purchase.productId);
+            const productRef = doc(db, 'products', purchase.product_id);
             const productDoc = await transaction.get(productRef);
             
             // 2. WRITES SECOND
             if (productDoc.exists()) {
+              const product = productDoc.data() as Product;
+              const currentQty = product.total_stock || 0;
+              const currentCost = product.average_cost_price || 0;
+              const purchaseQty = purchase.qty;
+              const purchaseTotal = purchase.total_amount;
+
+              const newQty = currentQty + purchaseQty;
+              const newValue = (currentQty * currentCost) + purchaseTotal;
+
               transaction.update(productRef, {
-                stock: productDoc.data().stock + purchase.quantity
+                total_stock: newQty,
+                average_cost_price: newQty > 0 ? newValue / newQty : currentCost
               });
             }
             const { id, ...data } = purchase;
@@ -206,16 +375,16 @@ export function Purchase() {
 
   const exportToExcel = () => {
     const data = sortedPurchases.map(p => {
-      const product = products.find(prod => prod.id === p.productId);
+      const product = products.find(prod => prod.id === p.product_id);
       const supplier = suppliers.find(s => s.id === p.supplierId);
       return {
         'Date': p.date,
         'Product': product?.name || '',
         'Supplier': supplier?.name || '',
-        'Quantity': p.quantity,
-        'Unit Cost': p.unitCost,
+        'Quantity': p.qty,
+        'Unit Cost': p.purchase_price,
         'Shipping': p.shipping,
-        'Total Amount': p.totalAmount
+        'Total Amount': p.total_amount
       };
     });
 
@@ -262,38 +431,53 @@ export function Purchase() {
               <th onClick={() => requestSort('date')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Date{getSortIcon('date')}</div>
               </th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Code</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product</th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Category</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600">Supplier</th>
-              <th onClick={() => requestSort('quantity')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
-                <div className="flex items-center justify-center">Quantity{getSortIcon('quantity')}</div>
+              <th onClick={() => requestSort('qty')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Qty{getSortIcon('qty')}</div>
               </th>
-              <th onClick={() => requestSort('unitCost')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Unit Cost{getSortIcon('unitCost')}</div>
+              <th onClick={() => requestSort('purchase_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Purchase Price{getSortIcon('purchase_price')}</div>
+              </th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Expiry</th>
+              <th onClick={() => requestSort('current_selling_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Sales Price{getSortIcon('current_selling_price')}</div>
               </th>
               <th onClick={() => requestSort('shipping')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
                 <div className="flex items-center justify-end">Shipping{getSortIcon('shipping')}</div>
               </th>
-              <th onClick={() => requestSort('totalAmount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Total{getSortIcon('totalAmount')}</div>
+              <th onClick={() => requestSort('total_amount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                <div className="flex items-center justify-end">Total{getSortIcon('total_amount')}</div>
               </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sortedPurchases.map((purchase) => {
-              const product = products.find(p => p.id === purchase.productId);
+              const product = products.find(p => p.id === purchase.product_id);
               const supplier = suppliers.find(s => s.id === purchase.supplierId);
+              const category = categories.find(c => c.id === purchase.categoryId);
               return (
                 <tr key={purchase.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 text-slate-600 text-xs">
                     {format(new Date(purchase.date), 'MMM d, yyyy')}
                   </td>
+                  <td className="px-6 py-4 text-slate-600 text-xs font-mono">{product?.productCode || '-'}</td>
                   <td className="px-6 py-4 font-medium text-slate-900">{product?.name || 'Unknown'}</td>
+                  <td className="px-6 py-4 text-slate-600 text-xs">{category?.name || '-'}</td>
                   <td className="px-6 py-4 text-slate-600 text-xs">{supplier?.name || 'Unknown'}</td>
-                  <td className="px-6 py-4 text-center font-bold text-pink-600">{purchase.quantity}</td>
-                  <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.unitCost)}</td>
+                  <td className="px-6 py-4 text-center font-bold text-pink-600">{purchase.qty}</td>
+                  <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.purchase_price)}</td>
+                  <td className="px-6 py-4 text-center">
+                    <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold">
+                      {purchase.expiryDate || '-'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right text-pink-600 font-bold">{formatMMK(purchase.current_selling_price)}</td>
                   <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.shipping)}</td>
-                  <td className="px-6 py-4 text-right font-bold text-slate-900">{formatMMK(purchase.totalAmount)}</td>
+                  <td className="px-6 py-4 text-right font-bold text-slate-900">{formatMMK(purchase.total_amount)}</td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex items-center justify-center gap-1">
                       <button 
@@ -329,18 +513,37 @@ export function Purchase() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white shrink-0">
               <h2 className="text-xl font-bold">{editingPurchase ? 'Edit Purchase' : 'Record New Purchase'}</h2>
               <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Plus className="w-6 h-6 rotate-45" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
-                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
+                  <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700 underline decoration-pink-500 underline-offset-4 decoration-2">Expiry Date (MM/YYYY)</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 12/2025"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                    value={formData.expiryDate} 
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, "");
+                      if (val.length > 2) {
+                        val = val.slice(0, 2) + "/" + val.slice(2, 6);
+                      }
+                      setFormData({ ...formData, expiryDate: val });
+                    }} 
+                  />
+                </div>
               </div>
+
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-semibold text-slate-700">Product</label>
@@ -355,46 +558,89 @@ export function Purchase() {
                     />
                   </div>
                 </div>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productId || ''} onChange={(e) => setFormData({ ...formData, productId: e.target.value })}>
-                  <option value="">Select Product</option>
-                  {products
+                <select 
+                  required 
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                  value={formData.product_id || ''} 
+                  onChange={(e) => {
+                    const selectedId = e.target.value;
+                    const mp = masterProducts.find(p => p.id === selectedId);
+                    setFormData({ 
+                      ...formData, 
+                      product_id: selectedId,
+                      productCode: mp?.productCode || ''
+                    });
+                  }}
+                >
+                  <option value="">Select Product from Master</option>
+                  {masterProducts
                     .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())))
                     .map(p => {
-                      const category = categories.find(c => c.id === p.categoryId);
-                      const catDisplay = category ? ` [${category.name}]` : '';
                       const codeDisplay = p.productCode ? ` (${p.productCode})` : '';
                       const brandDisplay = p.brand ? ` - ${p.brand}` : '';
                       const dosageDisplay = p.dosage ? ` - ${p.dosage}` : '';
                       const unitDisplay = p.unitCount ? ` - ${p.unitCount}` : '';
                       const formDisplay = p.dosageForm ? ` - ${p.dosageForm}` : '';
-                      return <option key={p.id} value={p.id}>{p.name}{brandDisplay}{dosageDisplay}{unitDisplay}{formDisplay}{codeDisplay}{catDisplay}</option>;
+                      return <option key={p.id} value={p.id}>{p.name}{brandDisplay}{dosageDisplay}{unitDisplay}{formDisplay}{codeDisplay}</option>;
                     })}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Supplier</label>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId || ''} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
-                  <option value="">Select Supplier</option>
-                  {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Product Code</label>
+                  <input 
+                    type="text" 
+                    readOnly 
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-500 cursor-not-allowed outline-none font-mono"
+                    value={formData.productCode} 
+                  />
+                </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Quantity</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.quantity ?? 0} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) })} />
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.qty || 0} onChange={(e) => setFormData({ ...formData, qty: parseInt(e.target.value) || 0 })} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Category</label>
+                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.categoryId || ''} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}>
+                    <option value="">Select Category</option>
+                    {categories.map(c => {
+                      const parent = c.parent ? categories.find(p => p.id === c.parent) : null;
+                      const label = parent ? `${parent.name} > ${c.name}` : c.name;
+                      return <option key={c.id} value={c.id}>{label}</option>;
+                    })}
+                  </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Unit Cost (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.unitCost ?? 0} onChange={(e) => setFormData({ ...formData, unitCost: parseFloat(e.target.value) })} />
+                  <label className="text-sm font-semibold text-slate-700">Supplier</label>
+                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.supplierId || ''} onChange={(e) => setFormData({ ...formData, supplierId: e.target.value })}>
+                    <option value="">Select Supplier</option>
+                    {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
                 </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Shipping Cost (MMK)</label>
-                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.shipping ?? 0} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) })} />
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Purchase Price</label>
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.purchase_price || 0} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Sales Price</label>
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.current_selling_price || 0} onChange={(e) => setFormData({ ...formData, current_selling_price: parseFloat(e.target.value) || 0 })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Shipping Cost</label>
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.shipping || 0} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) || 0 })} />
+                </div>
               </div>
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-between sticky bottom-0 bg-white pt-4">
                 <div className="text-sm text-slate-500">
-                  Total: <span className="text-lg font-bold text-slate-900">{formatMMK((formData.quantity * formData.unitCost) + formData.shipping)}</span>
+                  Total: <span className="text-lg font-bold text-slate-900">{formatMMK((formData.qty * formData.purchase_price) + formData.shipping)}</span>
                 </div>
                 <div className="flex gap-3">
                   <button type="button" onClick={closeModal} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>

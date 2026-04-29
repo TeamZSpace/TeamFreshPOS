@@ -5,6 +5,8 @@ import { FileText, Calendar, BarChart3, ArrowUpCircle, ArrowDownCircle, Calculat
 import { handleFirestoreError, OperationType, formatMMK, cn } from '../lib/utils';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, parseISO, startOfDay, endOfDay, subMonths, startOfYear } from 'date-fns';
 
+import * as XLSX from 'xlsx';
+
 interface ReportEntry {
   date: string;
   category: 'Sales' | 'Expense' | 'Inventory Add' | 'Repurchase';
@@ -15,6 +17,7 @@ export function FinancialReport() {
   const [sales, setSales] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [viewType, setViewType] = useState<'daily' | 'monthly'>('daily');
   const [dateRange, setDateRange] = useState({
     start: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -23,7 +26,15 @@ export function FinancialReport() {
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setSales(snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          total_amount: Number(data.total_amount || data.totalAmount || 0),
+          order_no: data.order_no || data.orderNumber
+        } as any;
+      }));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
@@ -34,31 +45,53 @@ export function FinancialReport() {
       setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'purchases'));
 
+    const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
+
     return () => {
       unsubSales();
       unsubExpenses();
       unsubPurchases();
+      unsubProducts();
     };
   }, []);
 
   const aggregatedData = useMemo(() => {
-    const entries: ReportEntry[] = [
-      ...sales.map(s => ({
-        date: s.date,
+    const entries = sales.map(s => {
+      const saleCogs = (s.items || []).reduce((sum: number, item: any) => {
+        const pid = item.product_id || (item as any).id;
+        const product = products.find(p => p.id === pid);
+        const costSnapshot = item.cost_price_snapshot !== undefined ? Number(item.cost_price_snapshot) : undefined;
+        const productCost = product?.average_cost_price !== undefined ? Number(product.average_cost_price) : 0;
+        const cost = costSnapshot !== undefined && !isNaN(costSnapshot) ? costSnapshot : productCost;
+        const qty = Number(item.qty || 0);
+        return sum + (cost * qty);
+      }, 0);
+
+      return {
+        date: s.date || '',
         category: 'Sales' as const,
-        amount: (s.subtotal || (s.totalAmount - (s.deliveryFees || 0)))
-      })),
-      ...expenses.map(e => ({
-        date: e.date,
-        category: 'Expense' as const,
-        amount: e.amount
-      })),
-      ...purchases.map(p => ({
-        date: p.date,
-        category: 'Repurchase' as const, // Purchases are treated as Repurchase/Inventory Add
-        amount: p.totalAmount
-      }))
-    ];
+        amount: Number(s.gross_amount || s.subtotal || (Number(s.total_amount || 0) - Number(s.deliveryFees || 0)) || 0),
+        cogs: saleCogs
+      };
+    });
+
+    const expenseEntries: ReportEntry[] = expenses.map(e => ({
+      date: e.date || '',
+      category: 'Expense' as const,
+      amount: Number(e.amount || 0),
+      cogs: 0
+    }));
+
+    const purchaseEntries: ReportEntry[] = purchases.map(p => ({
+      date: p.date || '',
+      category: 'Repurchase' as const,
+      amount: Number(p.totalAmount || 0),
+      cogs: 0
+    }));
+
+    const allEntries = [...entries, ...expenseEntries, ...purchaseEntries];
 
     if (viewType === 'daily') {
       const days = eachDayOfInterval({
@@ -68,16 +101,20 @@ export function FinancialReport() {
 
       return days.map(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
-        const daySales = entries.filter(e => e.category === 'Sales' && e.date.startsWith(dateStr)).reduce((sum, e) => sum + e.amount, 0);
-        const dayExpenses = entries.filter(e => e.category === 'Expense' && e.date.startsWith(dateStr)).reduce((sum, e) => sum + e.amount, 0);
-        const dayPurchases = entries.filter(e => e.category === 'Repurchase' && e.date.startsWith(dateStr)).reduce((sum, e) => sum + e.amount, 0);
+        const daySales = allEntries.filter(e => e.category === 'Sales' && e.date.startsWith(dateStr));
+        const dayRevenue = daySales.reduce((sum, e) => sum + e.amount, 0);
+        const dayCogs = daySales.reduce((sum, e) => sum + (e.cogs || 0), 0);
+        const dayExpenses = allEntries.filter(e => e.category === 'Expense' && e.date.startsWith(dateStr)).reduce((sum, e) => sum + e.amount, 0);
+        const dayPurchases = allEntries.filter(e => e.category === 'Repurchase' && e.date.startsWith(dateStr)).reduce((sum, e) => sum + e.amount, 0);
         
         return {
           label: format(day, 'MMM d, yyyy'),
-          sales: daySales,
+          sales: dayRevenue,
+          cogs: dayCogs,
+          grossProfit: dayRevenue - dayCogs,
           expense: dayExpenses,
           repurchase: dayPurchases,
-          netBalance: daySales - (dayExpenses + dayPurchases)
+          netBalance: dayRevenue - dayCogs - dayExpenses
         };
       }).reverse();
     } else {
@@ -86,20 +123,41 @@ export function FinancialReport() {
       
       return months.map(month => {
         const monthStr = format(month, 'yyyy-MM');
-        const monthSales = entries.filter(e => e.category === 'Sales' && e.date.startsWith(monthStr)).reduce((sum, e) => sum + e.amount, 0);
-        const monthExpenses = entries.filter(e => e.category === 'Expense' && e.date.startsWith(monthStr)).reduce((sum, e) => sum + e.amount, 0);
-        const monthPurchases = entries.filter(e => e.category === 'Repurchase' && e.date.startsWith(monthStr)).reduce((sum, e) => sum + e.amount, 0);
+        const monthSales = allEntries.filter(e => e.category === 'Sales' && e.date.startsWith(monthStr));
+        const monthRevenue = monthSales.reduce((sum, e) => sum + e.amount, 0);
+        const monthCogs = monthSales.reduce((sum, e) => sum + (e.cogs || 0), 0);
+        const monthExpenses = allEntries.filter(e => e.category === 'Expense' && e.date.startsWith(monthStr)).reduce((sum, e) => sum + e.amount, 0);
+        const monthPurchases = allEntries.filter(e => e.category === 'Repurchase' && e.date.startsWith(monthStr)).reduce((sum, e) => sum + e.amount, 0);
 
         return {
           label: format(month, 'MMMM yyyy'),
-          sales: monthSales,
+          sales: monthRevenue,
+          cogs: monthCogs,
+          grossProfit: monthRevenue - monthCogs,
           expense: monthExpenses,
           repurchase: monthPurchases,
-          netBalance: monthSales - (monthExpenses + monthPurchases)
+          netBalance: monthRevenue - monthCogs - monthExpenses
         };
       }).reverse();
     }
-  }, [sales, expenses, purchases, viewType, dateRange]);
+  }, [sales, expenses, purchases, products, viewType, dateRange]);
+
+  const exportToExcel = () => {
+    const data = aggregatedData.map(row => ({
+      [viewType === 'daily' ? 'Date' : 'Month']: row.label,
+      'Sales (+)': row.sales,
+      'COGS (-)': row.cogs,
+      'Gross Profit': row.grossProfit,
+      'Expense (-)': row.expense,
+      'Repurchase (IOU)': row.repurchase,
+      'Net Balance': row.netBalance
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Financial Report');
+    XLSX.writeFile(wb, `Financial_Report_${format(new Date(), 'yyyyMMdd_HHmm')}.xlsx`);
+  };
 
   return (
     <div className="space-y-6">
@@ -107,30 +165,39 @@ export function FinancialReport() {
         <div>
           <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <BarChart3 className="w-8 h-8 text-pink-600" />
-            Financial Aggregation Report
+            Financial P&L Report
           </h2>
-          <p className="text-slate-500 text-sm mt-1">Automated daily and monthly financial summaries.</p>
+          <p className="text-slate-500 text-sm mt-1">Automated daily and monthly financial summaries. Balance = Revenue - COGS - Expenses.</p>
         </div>
         
-        <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setViewType('daily')}
-            className={cn(
-              "px-4 py-2 rounded-lg text-sm font-bold transition-all",
-              viewType === 'daily' ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}
+            onClick={exportToExcel}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-md shadow-emerald-100 group"
           >
-            Daily
+            <FileText className="w-5 h-5 group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Export Excel</span>
           </button>
-          <button
-            onClick={() => setViewType('monthly')}
-            className={cn(
-              "px-4 py-2 rounded-lg text-sm font-bold transition-all",
-              viewType === 'monthly' ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
-            )}
-          >
-            Monthly
-          </button>
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl">
+            <button
+              onClick={() => setViewType('daily')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                viewType === 'daily' ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Daily
+            </button>
+            <button
+              onClick={() => setViewType('monthly')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                viewType === 'monthly' ? "bg-white text-pink-600 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Monthly
+            </button>
+          </div>
         </div>
       </div>
 
@@ -163,8 +230,10 @@ export function FinancialReport() {
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">{viewType === 'daily' ? 'Date' : 'Month'}</th>
                 <th className="px-6 py-4 text-xs font-bold text-emerald-600 uppercase tracking-wider text-right">Sales (+)</th>
+                <th className="px-6 py-4 text-xs font-bold text-rose-500 uppercase tracking-wider text-right">COGS (-)</th>
+                <th className="px-6 py-4 text-xs font-bold text-teal-600 uppercase tracking-wider text-right">Gross Profit</th>
                 <th className="px-6 py-4 text-xs font-bold text-rose-600 uppercase tracking-wider text-right">Expense (-)</th>
-                <th className="px-6 py-4 text-xs font-bold text-amber-600 uppercase tracking-wider text-right">Repurchase (-)</th>
+                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Repurchase (IOU)</th>
                 <th className="px-6 py-4 text-xs font-bold text-pink-600 uppercase tracking-wider text-right">Net Balance</th>
               </tr>
             </thead>
@@ -173,8 +242,10 @@ export function FinancialReport() {
                 <tr key={idx} className="hover:bg-slate-50 transition-colors">
                   <td className="px-6 py-4 text-sm font-semibold text-slate-700">{row.label}</td>
                   <td className="px-6 py-4 text-right text-sm font-bold text-emerald-600">{formatMMK(row.sales)}</td>
+                  <td className="px-6 py-4 text-right text-sm font-bold text-rose-500">{formatMMK(row.cogs)}</td>
+                  <td className="px-6 py-4 text-right text-sm font-bold text-teal-600">{formatMMK(row.grossProfit)}</td>
                   <td className="px-6 py-4 text-right text-sm font-bold text-rose-600">{formatMMK(row.expense)}</td>
-                  <td className="px-6 py-4 text-right text-sm font-bold text-amber-600">{formatMMK(row.repurchase)}</td>
+                  <td className="px-6 py-4 text-right text-sm font-bold text-slate-400 italic">{formatMMK(row.repurchase)}</td>
                   <td className={cn(
                     "px-6 py-4 text-right text-sm font-black",
                     row.netBalance >= 0 ? "text-pink-600" : "text-rose-600"

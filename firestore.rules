@@ -15,9 +15,9 @@ service cloud.firestore {
     //   - name: string (required, 1-200 chars)
     //   - categoryId: string (optional)
     //   - supplierId: string (optional)
-    //   - landedCost: number (required, >= 0)
-    //   - sellingPrice: number (required, >= 0)
-    //   - stock: number (required)
+    //   - average_cost_price: number (required, >= 0)
+    //   - current_selling_price: number (required, >= 0)
+    //   - total_stock: number (required)
     //   - createdAt: timestamp (immutable)
     //
     // Collection: sales
@@ -25,7 +25,7 @@ service cloud.firestore {
     //   - orderNumber: string (required)
     //   - date: string (required, ISO 8601)
     //   - customerId: string (required)
-    //   - items: list (required, max 50 items)
+    //   - items: list (required, max 50 items) - each item: {product_id, qty, sold_price_snapshot, cost_price_snapshot}
     //   - totalAmount: number (required, >= 0)
     //   - subtotal: number (optional)
     //   - deliveryFees: number (optional)
@@ -34,9 +34,22 @@ service cloud.firestore {
     // Collection: purchases
     // Fields:
     //   - date: string (required)
-    //   - productId: string (required)
-    //   - quantity: number (required)
+    //   - product_id: string (required)
+    //   - qty: number (required)
+    //   - purchase_price: number (required)
     //   - totalAmount: number (required)
+    //
+    // Collection: inventory_logs
+    // Fields:
+    //   - productId: string
+    //   - productName: string
+    //   - type: string (IN, OUT, ADJUST)
+    //   - quantity: number
+    //   - referenceId: string
+    //   - reason: string
+    //   - date: timestamp
+    //   - previousQty: number
+    //   - newQty: number
     //
     // Collection: customers
     // Fields:
@@ -106,28 +119,54 @@ service cloud.firestore {
     // Domain Validators
     // ===============================================================
     function isValidProduct(data) {
-      return hasRequiredFields(['name', 'landedCost', 'sellingPrice', 'stock']) &&
+      return hasRequiredFields(['name', 'average_cost_price', 'current_selling_price', 'total_stock']) &&
              isValidString('name', 1, 200) &&
              isValidOptionalString('productCode', 50) &&
              isValidOptionalString('brand', 100) &&
              isValidOptionalString('dosage', 100) &&
              isValidOptionalString('unitCount', 100) &&
              isValidOptionalString('dosageForm', 100) &&
-             isPositive('landedCost') &&
-             isPositive('sellingPrice') &&
-             data.stock is number;
+             isValidOptionalString('expiryDate', 10) &&
+             isValidOptionalString('purchaseDate', 20) &&
+             isValidOptionalString('supplierId', 50) &&
+             isValidOptionalString('categoryId', 50) &&
+             isPositive('average_cost_price') &&
+             isPositive('current_selling_price') &&
+             data.total_stock is number;
     }
 
     function isValidSale(data) {
-      return hasRequiredFields(['orderNumber', 'date', 'customerId', 'items', 'totalAmount']) &&
-             isValidString('orderNumber', 1, 50) &&
+      return hasRequiredFields(['order_no', 'date', 'customer_id', 'items', 'gross_amount', 'tax_amount', 'net_amount', 'total_amount']) &&
+             isValidString('order_no', 1, 50) &&
              data.items is list && data.items.size() <= 50 &&
-             isPositive('totalAmount');
+             isPositive('gross_amount') &&
+             isPositive('tax_amount') &&
+             isPositive('net_amount') &&
+             isPositive('total_amount');
     }
 
     function isValidPurchase(data) {
-      return hasRequiredFields(['date', 'productId', 'quantity', 'totalAmount']) &&
-             data.quantity is number && isPositive('totalAmount');
+      return hasRequiredFields(['date', 'product_id', 'qty', 'total_amount']) &&
+             isValidString('date', 1, 30) &&
+             isValidString('product_id', 1, 50) &&
+             isValidOptionalString('supplierId', 50) &&
+             isValidOptionalString('categoryId', 50) &&
+             isValidOptionalString('expiryDate', 10) &&
+             isPositive('qty') &&
+             isPositive('total_amount') &&
+             isPositive('purchase_price') &&
+             isPositive('current_selling_price') &&
+             isPositive('shipping');
+    }
+
+    function isValidInventoryLog(data) {
+      return hasRequiredFields(['product_id', 'productName', 'type', 'qty', 'reason', 'date']) &&
+             isValidString('product_id', 1, 50) &&
+             isValidString('productName', 1, 200) &&
+             data.type in ['IN', 'OUT', 'ADJUST'] &&
+             data.qty is number &&
+             isValidString('reason', 1, 500) &&
+             data.date is timestamp;
     }
 
     function isValidCustomer(data) {
@@ -249,6 +288,12 @@ service cloud.firestore {
     match /partners/{partnerId} {
       allow read, delete: if isAuthenticated();
       allow create, update: if isAuthenticated() && isValidPartner(request.resource.data);
+    }
+
+    match /inventory_logs/{logId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidInventoryLog(request.resource.data);
+      allow update, delete: if false; // Logs should be immutable
     }
   }
 }

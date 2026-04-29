@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, serverTimestamp, orderBy, limit } from 'firebase/firestore';
 import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, AlertCircle, Calendar, Package, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { cn, handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
@@ -17,10 +17,10 @@ interface Product {
   dosageForm?: string;
   categoryId: string;
   supplierId: string;
-  landedCost: number;
-  sellingPrice: number;
+  average_cost_price: number;
+  current_selling_price: number;
   margin: number;
-  stock: number;
+  total_stock: number;
   expiryDate: string;
   purchaseDate: string;
 }
@@ -47,12 +47,27 @@ interface Supplier {
   name: string;
 }
 
+interface InventoryLog {
+  id: string;
+  product_id: string;
+  productName: string;
+  type: 'IN' | 'OUT' | 'ADJUST';
+  qty: number;
+  referenceId?: string;
+  reason: string;
+  date: any;
+  previousQty?: number;
+  newQty?: number;
+}
+
 import { notifyUndo } from '../lib/notifications';
 
 export function Inventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [logs, setLogs] = useState<InventoryLog[]>([]);
+  const [view, setView] = useState<'inventory' | 'logs'>('inventory');
   const [masterProducts, setMasterProducts] = useState<ProductDefinition[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -71,9 +86,9 @@ export function Inventory() {
     dosageForm: '',
     categoryId: '',
     supplierId: '',
-    landedCost: 0,
-    sellingPrice: 0,
-    stock: 0,
+    average_cost_price: 0,
+    current_selling_price: 0,
+    total_stock: 0,
     expiryDate: '',
     purchaseDate: format(new Date(), 'yyyy-MM-dd'),
   });
@@ -95,11 +110,16 @@ export function Inventory() {
       setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductDefinition)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
 
+    const unsubLogs = onSnapshot(query(collection(db, 'inventory_logs'), orderBy('date', 'desc'), limit(100)), (snapshot) => {
+      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryLog)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'inventory_logs'));
+
     return () => {
       unsubProducts();
       unsubCategories();
       unsubSuppliers();
       unsubMaster();
+      unsubLogs();
     };
   }, []);
 
@@ -118,7 +138,7 @@ export function Inventory() {
     }
 
     try {
-      const margin = formData.sellingPrice - formData.landedCost;
+      const margin = formData.current_selling_price - formData.average_cost_price;
       if (editingProduct) {
         await updateDoc(doc(db, 'products', editingProduct.id), {
           ...formData,
@@ -149,9 +169,9 @@ export function Inventory() {
       dosageForm: product.dosageForm || '',
       categoryId: product.categoryId,
       supplierId: product.supplierId,
-      landedCost: product.landedCost,
-      sellingPrice: product.sellingPrice,
-      stock: product.stock,
+      average_cost_price: product.average_cost_price,
+      current_selling_price: product.current_selling_price,
+      total_stock: product.total_stock,
       expiryDate: product.expiryDate || '',
       purchaseDate: product.purchaseDate || format(new Date(), 'yyyy-MM-dd'),
     });
@@ -170,9 +190,9 @@ export function Inventory() {
       dosageForm: '',
       categoryId: '',
       supplierId: '',
-      landedCost: 0,
-      sellingPrice: 0,
-      stock: 0,
+      average_cost_price: 0,
+      current_selling_price: 0,
+      total_stock: 0,
       expiryDate: '',
       purchaseDate: format(new Date(), 'yyyy-MM-dd'),
     });
@@ -210,17 +230,14 @@ export function Inventory() {
   const exportToExcel = () => {
     const data = sortedProducts.map(p => {
       const category = categories.find(c => c.id === p.categoryId);
-      const supplier = suppliers.find(s => s.id === p.supplierId);
       return {
         'Product Code': p.productCode || '',
         'Brand': p.brand || '',
         'Product Name': p.name,
         'Category': category?.name || '',
-        'Supplier': supplier?.name || '',
-        'Landed Cost': p.landedCost,
-        'Selling Price': p.sellingPrice,
-        'Margin': p.margin,
-        'Stock': p.stock,
+        'Purchase Price': p.average_cost_price,
+        'Sales Price': p.current_selling_price,
+        'Stock': p.total_stock,
         'Expiry Date': p.expiryDate,
         'Purchase Date': p.purchaseDate
       };
@@ -238,63 +255,36 @@ export function Inventory() {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Products Box Summary */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-pink-50 p-6 rounded-2xl border border-pink-100">
-          <div className="flex items-center gap-3 mb-2">
-            <Package className="w-5 h-5 text-pink-600" />
-            <h3 className="text-sm font-bold text-pink-900 uppercase tracking-wider">Total Products</h3>
+    <div className="space-y-6 animate-in fade-in duration-700">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-3xl font-black text-slate-900 tracking-tight tracking-tight">Stock Management</h2>
+          <p className="text-slate-500 font-medium">Monitor levels and track transaction history</p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-100 p-1 rounded-xl flex mr-2">
+            <button 
+              onClick={() => setView('inventory')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                view === 'inventory' ? "bg-white shadow-sm text-pink-600" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Inventory
+            </button>
+            <button 
+              onClick={() => setView('logs')}
+              className={cn(
+                "px-4 py-2 rounded-lg text-sm font-bold transition-all",
+                view === 'logs' ? "bg-white shadow-sm text-pink-600" : "text-slate-500 hover:text-slate-700"
+              )}
+            >
+              Logs
+            </button>
           </div>
-          <p className="text-3xl font-black text-pink-900">{products.length}</p>
-        </div>
-        <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
-          <div className="flex items-center gap-3 mb-2">
-            <AlertCircle className="w-5 h-5 text-emerald-600" />
-            <h3 className="text-sm font-bold text-emerald-900 uppercase tracking-wider">In Stock</h3>
-          </div>
-          <p className="text-3xl font-black text-emerald-900">{products.reduce((sum, p) => sum + (p.stock > 0 ? 1 : 0), 0)}</p>
-        </div>
-        <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100">
-          <div className="flex items-center gap-3 mb-2">
-            <AlertCircle className="w-5 h-5 text-rose-600" />
-            <h3 className="text-sm font-bold text-rose-900 uppercase tracking-wider">Out of Stock</h3>
-          </div>
-          <p className="text-3xl font-black text-rose-900">{products.reduce((sum, p) => sum + (p.stock <= 0 ? 1 : 0), 0)}</p>
-        </div>
-        <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100">
-          <div className="flex items-center gap-3 mb-2">
-            <Calendar className="w-5 h-5 text-amber-600" />
-            <h3 className="text-sm font-bold text-amber-900 uppercase tracking-wider">Expiring Soon</h3>
-          </div>
-          <p className="text-3xl font-black text-amber-900">
-            {products.filter(p => p.expiryDate && new Date(p.expiryDate).getTime() < new Date().getTime() + 30 * 24 * 60 * 60 * 1000).length}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search products..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={exportToExcel}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
-          >
-            <FileSpreadsheet className="w-5 h-5" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
           <button
             onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+            className="flex items-center justify-center gap-2 px-6 py-3 bg-pink-600 text-white rounded-2xl font-bold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
           >
             <Plus className="w-5 h-5" />
             Add Product
@@ -302,126 +292,232 @@ export function Inventory() {
         </div>
       </div>
 
-      <div className="overflow-x-auto border border-slate-200 rounded-xl">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th onClick={() => requestSort('productCode')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Product Code{getSortIcon('productCode')}</div>
-              </th>
-              <th onClick={() => requestSort('brand')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Brand{getSortIcon('brand')}</div>
-              </th>
-              <th onClick={() => requestSort('name')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Product Name{getSortIcon('name')}</div>
-              </th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Category</th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Supplier</th>
-              <th onClick={() => requestSort('landedCost')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Landed Cost{getSortIcon('landedCost')}</div>
-              </th>
-              <th onClick={() => requestSort('sellingPrice')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Selling{getSortIcon('sellingPrice')}</div>
-              </th>
-              <th onClick={() => requestSort('margin')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Margin (%){getSortIcon('margin')}</div>
-              </th>
-              <th onClick={() => requestSort('stock')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
-                <div className="flex items-center justify-center">Stock{getSortIcon('stock')}</div>
-              </th>
-              <th onClick={() => requestSort('expiryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
-                <div className="flex items-center justify-center">Expiry Date{getSortIcon('expiryDate')}</div>
-              </th>
-              <th onClick={() => requestSort('purchaseDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
-                <div className="flex items-center justify-center">Purchase Date{getSortIcon('purchaseDate')}</div>
-              </th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {sortedProducts.map((product) => {
-              const category = categories.find(c => c.id === product.categoryId);
-              const parentCategory = category?.parent ? categories.find(c => c.id === category.parent) : null;
-              const categoryDisplay = category 
-                ? (parentCategory ? `${parentCategory.name} > ${category.name}` : category.name)
-                : '-';
-              
-              const supplier = suppliers.find(s => s.id === product.supplierId);
-              const isLowStock = product.stock < 10;
-              const marginPercent = product.landedCost > 0 ? (product.margin / product.landedCost) * 100 : 0;
+      {view === 'inventory' ? (
+        <>
+          {/* Products Box Summary */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+            <div className="bg-pink-50 p-6 rounded-2xl border border-pink-100">
+              <div className="flex items-center gap-3 mb-2">
+                <Package className="w-5 h-5 text-pink-600" />
+                <h3 className="text-xs font-bold text-pink-900 uppercase tracking-wider">Total Products</h3>
+              </div>
+              <p className="text-2xl font-black text-pink-900">{products.length}</p>
+            </div>
+            <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
+              <div className="flex items-center gap-3 mb-2">
+                <ArrowUpDown className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wider">Total Items</h3>
+              </div>
+              <p className="text-2xl font-black text-indigo-900">{products.reduce((sum, p) => sum + (p.total_stock || 0), 0)}</p>
+            </div>
+            <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
+              <div className="flex items-center gap-3 mb-2">
+                <AlertCircle className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">In Stock</h3>
+              </div>
+              <p className="text-2xl font-black text-emerald-900">{products.reduce((sum, p) => sum + (p.total_stock > 0 ? 1 : 0), 0)}</p>
+            </div>
+            <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100">
+              <div className="flex items-center gap-3 mb-2">
+                <AlertCircle className="w-5 h-5 text-rose-600" />
+                <h3 className="text-xs font-bold text-rose-900 uppercase tracking-wider">Out of Stock</h3>
+              </div>
+              <p className="text-2xl font-black text-rose-900">{products.reduce((sum, p) => sum + (p.total_stock <= 0 ? 1 : 0), 0)}</p>
+            </div>
+            <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100">
+              <div className="flex items-center gap-3 mb-2">
+                <Calendar className="w-5 h-5 text-amber-600" />
+                <h3 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Expiring</h3>
+              </div>
+              <p className="text-2xl font-black text-amber-900">
+                {products.filter(p => {
+                  if (!p.expiryDate || !p.expiryDate.includes('/')) return false;
+                  const [month, year] = p.expiryDate.split('/');
+                  const expDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+                  return expDate.getTime() < new Date().getTime() + 30 * 24 * 60 * 60 * 1000;
+                }).length}
+              </p>
+            </div>
+            <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
+              <div className="flex items-center gap-3 mb-2 text-slate-400">
+                <FileSpreadsheet className="w-5 h-5" />
+                <h3 className="text-xs font-bold uppercase tracking-wider">Stock Value</h3>
+              </div>
+              <p className="text-lg font-black text-white truncate">
+                {formatMMK(products.reduce((sum, p) => sum + (p.total_stock * p.average_cost_price), 0))}
+              </p>
+            </div>
+          </div>
 
-              return (
-                <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4 text-slate-500 font-mono text-xs">{product.productCode || '-'}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
-                  <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
-                  <td className="px-6 py-4 text-slate-600 text-xs">{categoryDisplay}</td>
-                  <td className="px-6 py-4 text-slate-600 text-xs">{supplier?.name || '-'}</td>
-                  <td className="px-6 py-4 text-right text-slate-600">{formatMMK(product.landedCost)}</td>
-                  <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(product.sellingPrice)}</td>
-                  <td className="px-6 py-4 text-right">
-                    <span className={cn(
-                      "px-2 py-1 rounded-lg text-xs font-bold",
-                      product.margin > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
-                    )}>
-                      {marginPercent.toFixed(1)}%
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <span className={cn(
-                      "px-3 py-1 rounded-full text-xs font-bold",
-                      isLowStock ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"
-                    )}>
-                      {product.stock}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-center text-xs">
-                    {product.expiryDate ? (
-                      <span className={cn(
-                        "px-2 py-1 rounded-lg font-medium",
-                        new Date(product.expiryDate).getTime() < new Date().getTime() + 30 * 24 * 60 * 60 * 1000
-                          ? "bg-amber-50 text-amber-700 border border-amber-100"
-                          : "text-slate-600"
-                      )}>
-                        {format(new Date(product.expiryDate), 'MMM d, yyyy')}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="px-6 py-4 text-center text-xs text-slate-500">
-                    {product.purchaseDate ? format(new Date(product.purchaseDate), 'MMM d, yyyy') : '-'}
-                  </td>
-                  <td className="px-6 py-4 text-center">
-                    <div className="flex items-center justify-center gap-1">
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openEditModal(product);
-                        }} 
-                        className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
-                        title="Edit Product"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteConfirm({ isOpen: true, productId: product.id, productName: product.name });
-                        }} 
-                        className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                        title="Delete Product"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </td>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="relative flex-1 max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search products..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={exportToExcel}
+                className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-semibold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100"
+              >
+                <FileSpreadsheet className="w-5 h-5" />
+                <span className="hidden sm:inline">Export</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-200">
+                  <th onClick={() => requestSort('productCode')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                    <div className="flex items-center">Product Code{getSortIcon('productCode')}</div>
+                  </th>
+                  <th onClick={() => requestSort('brand')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                    <div className="flex items-center">Brand{getSortIcon('brand')}</div>
+                  </th>
+                  <th onClick={() => requestSort('name')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                    <div className="flex items-center">Product Name{getSortIcon('name')}</div>
+                  </th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600">Category</th>
+                  <th onClick={() => requestSort('average_cost_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                    <div className="flex items-center justify-end">Purchase Price{getSortIcon('average_cost_price')}</div>
+                  </th>
+                  <th onClick={() => requestSort('current_selling_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+                    <div className="flex items-center justify-end">Sales Price{getSortIcon('current_selling_price')}</div>
+                  </th>
+                  <th onClick={() => requestSort('total_stock')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                    <div className="flex items-center justify-center">Stock{getSortIcon('total_stock')}</div>
+                  </th>
+                  <th onClick={() => requestSort('expiryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                    <div className="flex items-center justify-center">Expiry Date{getSortIcon('expiryDate')}</div>
+                  </th>
+                  <th onClick={() => requestSort('purchaseDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                    <div className="flex items-center justify-center">Purchase Date{getSortIcon('purchaseDate')}</div>
+                  </th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
                 </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sortedProducts.map((product) => {
+                  const isLowStock = product.total_stock < 10;
+
+                  return (
+                    <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
+                      <td className="px-6 py-4 text-slate-500 font-mono text-xs">{product.productCode || '-'}</td>
+                      <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
+                      <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
+                      <td className="px-6 py-4 text-slate-600 text-xs">
+                        {categories.find(c => c.id === product.categoryId)?.name || '-'}
+                      </td>
+                      <td className="px-6 py-4 text-right text-slate-600">{formatMMK(product.average_cost_price)}</td>
+                      <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(product.current_selling_price)}</td>
+                      <td className="px-6 py-4 text-center">
+                        <span className={cn(
+                          "px-3 py-1 rounded-full text-xs font-bold",
+                          product.total_stock < 10 ? "bg-rose-100 text-rose-700" : "bg-slate-100 text-slate-700"
+                        )}>
+                          {product.total_stock}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-center text-xs">
+                        {product.expiryDate ? (
+                          <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg font-bold">
+                            {product.expiryDate}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-center text-xs text-slate-500">
+                        {product.purchaseDate ? format(new Date(product.purchaseDate), 'MMM d, yyyy') : '-'}
+                      </td>
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center gap-1">
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openEditModal(product);
+                            }} 
+                            className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
+                            title="Edit Product"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirm({ isOpen: true, productId: product.id, productName: product.name });
+                            }} 
+                            className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                            title="Delete Product"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+            <h3 className="font-bold text-slate-900 text-xl">Recent Transactions</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600">Date</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600">Type</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Qty</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600">Reason</th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Balance</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {logs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 text-xs font-medium text-slate-500">
+                      {log.date ? format(log.date.toDate(), 'dd/MM/yyyy HH:mm') : '-'}
+                    </td>
+                    <td className="px-6 py-4 font-bold text-slate-900">{log.productName}</td>
+                    <td className="px-6 py-4">
+                      <span className={cn(
+                        "px-2 py-0.5 rounded text-[10px] font-black uppercase",
+                        log.type === 'IN' ? "bg-emerald-100 text-emerald-700" : 
+                        log.type === 'OUT' ? "bg-rose-100 text-rose-700" : "bg-blue-100 text-blue-700"
+                      )}>
+                        {log.type}
+                      </span>
+                    </td>
+                    <td className={cn(
+                      "px-6 py-4 text-right font-black",
+                      log.type === 'IN' ? "text-emerald-600" : "text-rose-600"
+                    )}>
+                      {log.type === 'OUT' ? `-${log.qty}` : `+${log.qty}`}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-slate-500">{log.reason}</td>
+                    <td className="px-6 py-4 text-right font-mono text-xs text-slate-400">
+                      {log.previousQty} → {log.newQty}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -469,6 +565,10 @@ export function Inventory() {
                   <input type="text" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.productCode || ''} onChange={(e) => setFormData({ ...formData, productCode: e.target.value })} />
                 </div>
                 <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Stock</label>
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.total_stock || 0} onChange={(e) => setFormData({ ...formData, total_stock: parseInt(e.target.value) || 0 })} />
+                </div>
+                <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Category</label>
                   <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.categoryId || ''} onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}>
                     <option value="">Select Category</option>
@@ -487,24 +587,28 @@ export function Inventory() {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
-                  <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.purchaseDate || ''} onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })} />
+                  <label className="text-sm font-semibold text-slate-700">Expiry Date (MM/YYYY)</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. 12/2025"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                    value={formData.expiryDate} 
+                    onChange={(e) => {
+                      let val = e.target.value.replace(/\D/g, "");
+                      if (val.length > 2) {
+                        val = val.slice(0, 2) + "/" + val.slice(2, 6);
+                      }
+                      setFormData({ ...formData, expiryDate: val });
+                    }} 
+                  />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Expiry Date</label>
-                  <input type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.expiryDate || ''} onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })} />
+                  <label className="text-sm font-semibold text-slate-700">Purchase Price (MMK)</label>
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.average_cost_price || 0} onChange={(e) => setFormData({ ...formData, average_cost_price: parseFloat(e.target.value) || 0 })} />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Landed Cost (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.landedCost ?? 0} onChange={(e) => setFormData({ ...formData, landedCost: parseFloat(e.target.value) })} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Selling Price (MMK)</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.sellingPrice ?? 0} onChange={(e) => setFormData({ ...formData, sellingPrice: parseFloat(e.target.value) })} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Stock</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.stock ?? 0} onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) })} />
+                  <label className="text-sm font-semibold text-slate-700">Sales Price (MMK)</label>
+                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.current_selling_price || 0} onChange={(e) => setFormData({ ...formData, current_selling_price: parseFloat(e.target.value) || 0 })} />
                 </div>
               </div>
               <div className="flex justify-end gap-3 mt-8">

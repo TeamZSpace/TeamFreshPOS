@@ -10,9 +10,12 @@ import { exportAllToExcel } from '../lib/exportUtils';
 interface Sale {
   id: string;
   date: string;
-  totalAmount: number;
+  gross_amount?: number;
+  tax_amount?: number;
+  net_amount?: number;
+  total_amount: number;
   subtotal: number;
-  items: { productId: string; quantity: number; price: number }[];
+  items: { product_id: string; qty: number; sold_price_snapshot: number; cost_price_snapshot?: number }[];
 }
 
 interface Expense {
@@ -25,7 +28,8 @@ interface Expense {
 interface Product {
   id: string;
   name: string;
-  landedCost: number;
+  average_cost_price: number;
+  current_selling_price: number;
 }
 
 export function Report() {
@@ -38,7 +42,17 @@ export function Report() {
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Sale)));
+      setSales(snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          total_amount: Number(data.total_amount || data.totalAmount || 0),
+          subtotal: Number(data.subtotal || 0),
+          gross_amount: Number(data.gross_amount || data.subtotal || 0),
+          order_no: data.order_no || data.orderNumber
+        } as any;
+      }));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
@@ -65,33 +79,55 @@ export function Report() {
   const currentMonthSales = sales.filter(s => isSameMonth(new Date(s.date), selectedMonth));
   const currentMonthExpenses = expenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
 
-  const totalRevenue = currentMonthSales.reduce((sum, s) => sum + (s.subtotal || s.totalAmount), 0);
-  const totalExpenses = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+  const totalRevenue = currentMonthSales.reduce((sum, s) => {
+    // Total Revenue must exclude Delivery Fees. 
+    // We prefer gross_amount if it exists, otherwise calculate from items.
+    if (s.gross_amount !== undefined && !isNaN(Number(s.gross_amount))) return sum + Number(s.gross_amount);
+    return sum + (s.items || []).reduce((itemSum, item) => itemSum + (Number(item.sold_price_snapshot || 0) * Number(item.qty || 0)), 0);
+  }, 0);
+  const totalExpenses = currentMonthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
   // Calculate Cost of Goods Sold (COGS)
   const cogs = currentMonthSales.reduce((sum, sale) => {
-    return sum + sale.items.reduce((itemSum, item) => {
-      const product = products.find(p => p.id === item.productId);
-      const cost = product ? product.landedCost : 0;
-      return itemSum + (cost * item.quantity);
+    return sum + (sale.items || []).reduce((itemSum, item) => {
+      const pid = item.product_id || (item as any).id;
+      const product = products.find(p => p.id === pid);
+      const costSnapshot = item.cost_price_snapshot !== undefined ? Number(item.cost_price_snapshot) : undefined;
+      const productCost = product?.average_cost_price !== undefined ? Number(product.average_cost_price) : 0;
+      
+      const cost = costSnapshot !== undefined && !isNaN(costSnapshot) ? costSnapshot : productCost;
+      const qty = Number(item.qty || 0);
+      
+      return itemSum + (cost * qty);
     }, 0);
   }, 0);
 
   const grossProfit = totalRevenue - cogs;
   const netProfit = grossProfit - totalExpenses;
-  const profitMargin = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const profitMarginResult = totalRevenue > 0 ? (netProfit / totalRevenue) * 100 : 0;
+  const profitMargin = isNaN(profitMarginResult) ? 0 : profitMarginResult;
 
   const monthlyProfitList = React.useMemo(() => {
     return months.map(month => {
       const monthSales = sales.filter(s => isSameMonth(new Date(s.date), month));
       const monthExpenses = expenses.filter(e => isSameMonth(new Date(e.date), month));
       
-      const rev = monthSales.reduce((sum, s) => sum + (s.subtotal || s.totalAmount), 0);
-      const exp = monthExpenses.reduce((sum, e) => sum + e.amount, 0);
+      const rev = monthSales.reduce((sum, s) => {
+        if (s.gross_amount !== undefined && !isNaN(Number(s.gross_amount))) return sum + Number(s.gross_amount);
+        return sum + (s.items || []).reduce((itemSum, item) => itemSum + (Number(item.sold_price_snapshot || 0) * Number(item.qty || 0)), 0);
+      }, 0);
+      const exp = monthExpenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
       const cost = monthSales.reduce((sum, sale) => {
-        return sum + sale.items.reduce((itemSum, item) => {
-          const product = products.find(p => p.id === item.productId);
-          return itemSum + ((product?.landedCost || 0) * item.quantity);
+        return sum + (sale.items || []).reduce((itemSum, item) => {
+          const pid = item.product_id || (item as any).id;
+          const product = products.find(p => p.id === pid);
+          const costSnapshot = item.cost_price_snapshot !== undefined ? Number(item.cost_price_snapshot) : undefined;
+          const productCost = product?.average_cost_price !== undefined ? Number(product.average_cost_price) : 0;
+          
+          const finalCost = costSnapshot !== undefined && !isNaN(costSnapshot) ? costSnapshot : productCost;
+          const qty = Number(item.qty || 0);
+          
+          return itemSum + (finalCost * qty);
         }, 0);
       }, 0);
       
@@ -121,7 +157,7 @@ export function Report() {
       [],
       ['Sales Details'],
       ['Date', 'Order ID', 'Amount'],
-      ...currentMonthSales.map(s => [format(new Date(s.date), 'yyyy-MM-dd'), s.id, s.totalAmount]),
+                  ...currentMonthSales.map(s => [format(new Date(s.date), 'yyyy-MM-dd'), s.id, s.total_amount]),
       [],
       ['Expense Details'],
       ['Date', 'Category', 'Amount'],
@@ -189,7 +225,7 @@ export function Report() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-blue-50 rounded-lg">
@@ -198,7 +234,18 @@ export function Report() {
             <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-1 rounded-md">Revenue</span>
           </div>
           <p className="text-sm text-slate-500 mb-1">Total Sales</p>
-          <p className="text-2xl font-black text-slate-900">{formatMMK(totalRevenue)}</p>
+          <p className="text-xl font-black text-slate-900">{formatMMK(totalRevenue)}</p>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <div className="p-2 bg-slate-50 rounded-lg">
+              <Database className="w-5 h-5 text-slate-600" />
+            </div>
+            <span className="text-xs font-bold text-slate-600 bg-slate-50 px-2 py-1 rounded-md">Cost</span>
+          </div>
+          <p className="text-sm text-slate-500 mb-1">Total COGS</p>
+          <p className="text-xl font-black text-slate-900">{formatMMK(cogs)}</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
@@ -208,8 +255,8 @@ export function Report() {
             </div>
             <span className="text-xs font-bold text-rose-600 bg-rose-50 px-2 py-1 rounded-md">Expenses</span>
           </div>
-          <p className="text-sm text-slate-500 mb-1">Total Costs</p>
-          <p className="text-2xl font-black text-slate-900">{formatMMK(totalExpenses + cogs)}</p>
+          <p className="text-sm text-slate-500 mb-1">Operating Costs</p>
+          <p className="text-xl font-black text-slate-900">{formatMMK(totalExpenses)}</p>
         </div>
 
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
@@ -221,14 +268,14 @@ export function Report() {
           </div>
           <p className="text-sm text-slate-500 mb-1">Net Income</p>
           <p className={cn(
-            "text-2xl font-black",
+            "text-xl font-black",
             netProfit >= 0 ? "text-emerald-600" : "text-rose-600"
           )}>
             {formatMMK(netProfit)}
           </p>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm md:col-span-2 lg:col-span-1">
           <div className="flex items-center justify-between mb-4">
             <div className="p-2 bg-amber-50 rounded-lg">
               <TrendingUp className="w-5 h-5 text-amber-600" />
@@ -236,7 +283,7 @@ export function Report() {
             <span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-md">Margin</span>
           </div>
           <p className="text-sm text-slate-500 mb-1">Profitability</p>
-          <p className="text-2xl font-black text-slate-900">{profitMargin.toFixed(1)}%</p>
+          <p className="text-xl font-black text-slate-900">{profitMargin.toFixed(1)}%</p>
         </div>
       </div>
       
@@ -364,11 +411,14 @@ export function Report() {
             <tbody className="divide-y divide-slate-100">
               {products.map(product => {
                 const productSales = currentMonthSales.reduce((acc, sale) => {
-                  const item = sale.items.find(i => i.productId === product.id);
+                  const item = (sale.items || []).find(i => (i.product_id || (i as any).id) === product.id);
                   if (item) {
-                    acc.units += item.quantity;
-                    acc.revenue += item.quantity * item.price;
-                    acc.cost += item.quantity * product.landedCost;
+                    const qty = Number(item.qty || 0);
+                    acc.units += qty;
+                    acc.revenue += qty * Number(item.sold_price_snapshot || 0);
+                    const costSnapshot = item.cost_price_snapshot !== undefined ? Number(item.cost_price_snapshot) : undefined;
+                    const cost = costSnapshot !== undefined && !isNaN(costSnapshot) ? costSnapshot : Number(product.average_cost_price || 0);
+                    acc.cost += qty * cost;
                   }
                   return acc;
                 }, { units: 0, revenue: 0, cost: 0 });
@@ -387,7 +437,7 @@ export function Report() {
                   </tr>
                 );
               }).filter(Boolean)}
-              {products.every(p => !currentMonthSales.some(s => s.items.some(i => i.productId === p.id))) && (
+              {products.every(p => !currentMonthSales.some(s => s.items.some(i => i.product_id === p.id))) && (
                 <tr>
                   <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">
                     No product sales recorded for this month.
@@ -410,7 +460,7 @@ export function Report() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Name</th>
-                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Landed Cost</th>
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Purchase Price</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Selling Price</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Margin (%)</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Profit/Unit</th>
@@ -418,17 +468,19 @@ export function Report() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {products.map(product => {
-                const margin = product.sellingPrice - product.landedCost;
-                const marginPercent = product.landedCost > 0 ? (margin / product.landedCost) * 100 : 0;
+                const margin = (product.current_selling_price || 0) - (product.average_cost_price || 0);
+                const avgCost = product.average_cost_price || 0;
+                const marginPercentResult = avgCost > 0 ? (margin / avgCost) * 100 : 0;
+                const marginPercent = isNaN(marginPercentResult) ? 0 : marginPercentResult;
                 return (
                   <tr key={product.id} className="hover:bg-slate-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
-                    <td className="px-6 py-4 text-right text-slate-600">{formatMMK(product.landedCost)}</td>
-                    <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(product.sellingPrice)}</td>
+                    <td className="px-6 py-4 text-right text-slate-600">{formatMMK(product.average_cost_price)}</td>
+                    <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(product.current_selling_price)}</td>
                     <td className="px-6 py-4 text-center">
                       <span className={cn(
                         "px-3 py-1 rounded-full text-xs font-bold",
-                        margin > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                        (margin || 0) > 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
                       )}>
                         {marginPercent.toFixed(1)}%
                       </span>

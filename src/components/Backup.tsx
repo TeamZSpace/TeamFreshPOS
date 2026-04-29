@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, addDoc, serverTimestamp, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-import { Database, Download, History, ShieldCheck, AlertCircle, Clock, RefreshCw, FileSpreadsheet } from 'lucide-react';
+import { Database, Download, History as HistoryIcon, ShieldCheck, AlertCircle, Clock, RefreshCw, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, formatMMK } from '../lib/utils';
 import { format } from 'date-fns';
 import { exportAllToExcel } from '../lib/exportUtils';
@@ -135,7 +135,7 @@ export function Backup() {
               Auto-backup: Every 5 hours
             </p>
             <p className="text-sm text-pink-700 flex items-center gap-2">
-              <History className="w-4 h-4" />
+              <HistoryIcon className="w-4 h-4" />
               Last Backup: {lastBackup?.timestamp ? format(lastBackup.timestamp.toDate(), 'MMM d, h:mm a') : 'Never'}
             </p>
           </div>

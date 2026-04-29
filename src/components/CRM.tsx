@@ -291,11 +291,11 @@ export function CRM() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Points</label>
-                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.points ?? 0} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.points || 0} onChange={e => setFormData({...formData, points: parseInt(e.target.value) || 0})} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Orders</label>
-                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderCount ?? 0} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
+                  <input type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.orderCount || 0} onChange={e => setFormData({...formData, orderCount: parseInt(e.target.value) || 0})} />
                 </div>
               </div>
               <div className="space-y-1">

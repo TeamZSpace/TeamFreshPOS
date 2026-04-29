@@ -11,6 +11,9 @@ export function myanmarToEnglishNumerals(str: string): string {
 }
 
 export function formatMMK(amount: number): string {
+  if (isNaN(amount) || amount === null || amount === undefined) {
+    return 'Ks0';
+  }
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'MMK',

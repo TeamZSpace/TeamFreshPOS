@@ -315,7 +315,7 @@ export function Expense() {
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Amount (MMK)</label>
-                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.amount ?? 0} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value)})} />
+                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.amount || 0} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} />
               </div>
               <div className="space-y-1">
                 <label className="text-sm font-semibold text-slate-700">Description</label>

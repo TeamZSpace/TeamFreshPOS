@@ -23,7 +23,8 @@ import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, User
 import { collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/utils';
 
-export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup' | 'FinancialReport' | 'Partners';
+import { InventoryLogs } from './components/InventoryLogs';
+export type MenuType = 'Dashboard' | 'Inventory' | 'Purchase' | 'Sales' | 'Expense' | 'Categories' | 'CRM' | 'Supplier' | 'Setting' | 'Report' | 'ProductMaster' | 'Backup' | 'FinancialReport' | 'Partners' | 'InventoryLogs';
 
 export default function App() {
   const [user, setUser] = useState(auth.currentUser);
@@ -128,6 +129,7 @@ export default function App() {
       case 'Backup': return <Backup />;
       case 'FinancialReport': return <FinancialReport />;
       case 'Partners': return <Partners />;
+      case 'InventoryLogs': return <InventoryLogs />;
       default: return <Dashboard />;
     }
   };

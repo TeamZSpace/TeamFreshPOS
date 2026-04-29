@@ -16,7 +16,6 @@ interface ProductDefinition {
   dosage?: string;
   unitCount?: string;
   dosageForm?: string;
-  type: 'Packing' | 'Travel';
   createdAt: any;
 }
 
@@ -40,7 +39,6 @@ export function ProductMaster() {
     dosage: '',
     unitCount: '',
     dosageForm: '',
-    type: 'Packing' as 'Packing' | 'Travel',
   });
 
   // Auto-generate name
@@ -67,10 +65,6 @@ export function ProductMaster() {
 
     return () => unsub();
   }, []);
-
-  const handleTypeChange = (type: 'Packing' | 'Travel') => {
-    setFormData({ ...formData, type });
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -137,7 +131,6 @@ export function ProductMaster() {
       dosage: product.dosage || '',
       unitCount: product.unitCount || '',
       dosageForm: product.dosageForm || '',
-      type: product.type || 'Packing',
     });
     setIsModalOpen(true);
   };
@@ -153,7 +146,6 @@ export function ProductMaster() {
       dosage: '',
       unitCount: '',
       dosageForm: '',
-      type: 'Packing',
     });
   };
 
@@ -174,7 +166,6 @@ export function ProductMaster() {
       'Dosage': p.dosage || '',
       'Unit Count': p.unitCount || '',
       'Dosage Form': p.dosageForm || '',
-      'Type': p.type || 'Packing'
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -208,7 +199,7 @@ export function ProductMaster() {
           </button>
           <button 
             onClick={() => {
-              setFormData({ ...formData, type: 'Packing', productCode: '' });
+              setFormData({ ...formData, productCode: '' });
               setIsModalOpen(true);
             }}
             className="flex items-center justify-center gap-2 bg-pink-600 hover:bg-pink-700 text-white px-6 py-3 rounded-2xl transition-all duration-200 shadow-lg shadow-pink-100 font-semibold"
@@ -243,9 +234,6 @@ export function ProductMaster() {
                 <th onClick={() => requestSort('name')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                   <div className="flex items-center">Full Product Name{getSortIcon('name')}</div>
                 </th>
-                <th onClick={() => requestSort('type')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                  <div className="flex items-center">Type{getSortIcon('type')}</div>
-                </th>
                 <th onClick={() => requestSort('productCode')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                   <div className="flex items-center">Product Code{getSortIcon('productCode')}</div>
                 </th>
@@ -257,13 +245,6 @@ export function ProductMaster() {
                 <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
                   <td className="px-6 py-4 text-slate-700">{product.name}</td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                      product.type === 'Travel' ? 'bg-purple-100 text-purple-600' : 'bg-blue-100 text-blue-600'
-                    }`}>
-                      {product.type || 'Packing'}
-                    </span>
-                  </td>
                   <td className="px-6 py-4 text-slate-500 font-mono text-sm">{product.productCode}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -308,34 +289,6 @@ export function ProductMaster() {
               </button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-slate-700">Product Type</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => handleTypeChange('Packing')}
-                    className={`px-4 py-2 rounded-xl border-2 transition-all font-semibold text-sm ${
-                      formData.type === 'Packing' 
-                        ? 'border-pink-500 bg-pink-50 text-pink-700' 
-                        : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
-                    }`}
-                  >
-                    Packing (PC)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleTypeChange('Travel')}
-                    className={`px-4 py-2 rounded-xl border-2 transition-all font-semibold text-sm ${
-                      formData.type === 'Travel' 
-                        ? 'border-pink-500 bg-pink-50 text-pink-700' 
-                        : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
-                    }`}
-                  >
-                    Travel Size (PCT)
-                  </button>
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Brand</label>

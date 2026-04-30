@@ -42,6 +42,12 @@ interface Product {
   categoryId: string;
 }
 
+interface MasterProduct {
+  id: string;
+  name: string;
+  productCode: string;
+}
+
 interface Category {
   id: string;
   name: string;
@@ -63,6 +69,7 @@ import { notifyUndo } from '../lib/notifications';
 export function Sales() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -119,11 +126,16 @@ export function Sales() {
       setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'categories'));
 
+    const unsubMaster = onSnapshot(collection(db, 'productMaster'), (snapshot) => {
+      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
+
     return () => {
       unsubSales();
       unsubProducts();
       unsubCustomers();
       unsubCategories();
+      unsubMaster();
     };
   }, []);
 
@@ -215,38 +227,47 @@ Thank you for your order!
 
     setIsSubmitting(true);
     try {
-      const gross_amount = formData.items.reduce((sum, item) => sum + (item.sold_price_snapshot * item.qty), 0);
+      const gross_amount = Number((formData.items || []).reduce((sum, item) => sum + (item.sold_price_snapshot * item.qty), 0));
       const subtotal = gross_amount;
-      const tax_amount = formData.tax_amount || 0;
-      const net_amount = gross_amount + tax_amount + formData.deliveryFees;
+      const tax_amount = Number(formData.tax_amount || 0);
+      const deliveryFees = Number(formData.deliveryFees || 0);
+      const net_amount = gross_amount + tax_amount + deliveryFees;
       const totalAmount = net_amount;
       
       const pointsToAdd = Math.floor(subtotal / 100000) * 30;
       const orderNumber = editingSale ? editingSale.order_no : await generateOrderNumber(formData.date);
-      const englishPhone = myanmarToEnglishNumerals(formData.phone);
+      const englishPhone = myanmarToEnglishNumerals(formData.phone || '');
 
       // 1. Handle Customer (CRM) - Query outside transaction
       let customer_id = '';
-      let existingCustomerData: any = null;
-      const customerQuery = query(collection(db, 'customers'), where('facebookName', '==', formData.facebookName));
+      const trimFacebookName = (formData.facebookName || '').trim();
+      if (!trimFacebookName) throw new Error('Facebook name is required');
+
+      const customerQuery = query(collection(db, 'customers'), where('facebookName', '==', trimFacebookName));
       const customerSnap = await getDocs(customerQuery);
       
       if (!customerSnap.empty) {
         const customerDoc = customerSnap.docs[0];
         customer_id = customerDoc.id;
-        existingCustomerData = customerDoc.data();
       }
 
       await runTransaction(db, async (transaction) => {
         // --- 1. READS SECTION ---
         const productDocs: { [id: string]: any } = {};
         const productIds = new Set<string>();
-        if (editingSale) {
-          editingSale.items.forEach(item => productIds.add(item.product_id));
+        if (editingSale && editingSale.items) {
+          editingSale.items.forEach(item => {
+            const pid = item.product_id || (item as any).productId;
+            if (pid) productIds.add(pid);
+          });
         }
-        formData.items.forEach(item => productIds.add(item.product_id));
+        (formData.items || []).forEach(item => {
+          const pid = item.product_id || (item as any).productId;
+          if (pid) productIds.add(pid);
+        });
 
         for (const pid of productIds) {
+          if (!pid) continue;
           const pRef = doc(db, 'products', pid);
           const pDoc = await transaction.get(pRef);
           if (pDoc.exists()) {
@@ -256,80 +277,131 @@ Thank you for your order!
           }
         }
 
-        let customerDoc = null;
+        // Read customer info for BOTH old and new customer if they changed
+        let newCustomerDoc = null;
+        let oldCustomerDoc = null;
+
         if (customer_id) {
-          customerDoc = await transaction.get(doc(db, 'customers', customer_id));
+          newCustomerDoc = await transaction.get(doc(db, 'customers', customer_id));
+        }
+        
+        if (editingSale && editingSale.customer_id && editingSale.customer_id !== customer_id) {
+          oldCustomerDoc = await transaction.get(doc(db, 'customers', editingSale.customer_id));
         }
 
         // --- 2. WRITES SECTION ---
         
-        // Handle Customer (CRM)
-        if (customer_id && customerDoc?.exists()) {
-          const currentData = customerDoc.data();
-          const currentPoints = currentData.points || 0;
-          const currentOrderCount = currentData.orderCount || 0;
-          let finalPoints = currentPoints + pointsToAdd;
-          let finalOrderCount = currentOrderCount;
-
-          if (editingSale) {
+        // Handle Customer (CRM) - Points and counts
+        if (editingSale && editingSale.customer_id && editingSale.customer_id !== customer_id) {
+          // Customer changed: Revert old customer points
+          if (oldCustomerDoc?.exists()) {
+            const oldData = oldCustomerDoc.data();
             const oldSubtotal = editingSale.subtotal || editingSale.total_amount;
             const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
-            finalPoints = currentPoints - oldPoints + pointsToAdd;
-          } else {
-            finalOrderCount = currentOrderCount + 1;
+            transaction.update(doc(db, 'customers', editingSale.customer_id), {
+              points: Math.max(0, (oldData.points || 0) - oldPoints),
+              orderCount: Math.max(0, (oldData.orderCount || 0) - 1)
+            });
           }
 
-          transaction.update(doc(db, 'customers', customer_id), {
-            orderName: formData.orderName,
-            phone: englishPhone,
-            address: formData.address,
-            points: finalPoints,
-            orderCount: finalOrderCount,
-            lastOrderDate: new Date().toISOString(),
-          });
+          // New customer added points/count
+          if (customer_id && newCustomerDoc?.exists()) {
+            const newData = newCustomerDoc.data();
+            transaction.update(doc(db, 'customers', customer_id), {
+              points: (newData.points || 0) + pointsToAdd,
+              orderCount: (newData.orderCount || 0) + 1,
+              facebookName: trimFacebookName,
+              orderName: formData.orderName,
+              phone: englishPhone,
+              address: formData.address,
+              lastOrderDate: new Date().toISOString(),
+            });
+          } else {
+            const customerRef = doc(collection(db, 'customers'));
+            customer_id = customerRef.id;
+            transaction.set(customerRef, {
+              facebookName: trimFacebookName,
+              orderName: formData.orderName,
+              phone: englishPhone,
+              address: formData.address,
+              points: pointsToAdd,
+              orderCount: 1,
+              lastOrderDate: new Date().toISOString(),
+              createdAt: serverTimestamp(),
+            });
+          }
         } else {
-          const customerRef = doc(collection(db, 'customers'));
-          customer_id = customerRef.id;
-          transaction.set(customerRef, {
-            facebookName: formData.facebookName,
-            orderName: formData.orderName,
-            phone: englishPhone,
-            address: formData.address,
-            points: pointsToAdd,
-            orderCount: 1,
-            lastOrderDate: new Date().toISOString(),
-            createdAt: serverTimestamp(),
-          });
+          // Same customer or new sale
+          if (customer_id && newCustomerDoc?.exists()) {
+            const currentData = newCustomerDoc.data();
+            const currentPoints = currentData.points || 0;
+            const currentOrderCount = currentData.orderCount || 0;
+            let finalPoints = currentPoints + pointsToAdd;
+            let finalOrderCount = currentOrderCount;
+
+            if (editingSale) {
+              const oldSubtotal = editingSale.subtotal || editingSale.total_amount;
+              const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
+              finalPoints = Math.max(0, currentPoints - oldPoints + pointsToAdd);
+            } else {
+              finalOrderCount = currentOrderCount + 1;
+            }
+
+            transaction.update(doc(db, 'customers', customer_id), {
+              orderName: formData.orderName,
+              phone: englishPhone,
+              address: formData.address,
+              points: finalPoints,
+              orderCount: finalOrderCount,
+              lastOrderDate: new Date().toISOString(),
+            });
+          } else {
+            const customerRef = doc(collection(db, 'customers'));
+            customer_id = customerRef.id;
+            transaction.set(customerRef, {
+              facebookName: trimFacebookName,
+              orderName: formData.orderName,
+              phone: englishPhone,
+              address: formData.address,
+              points: pointsToAdd,
+              orderCount: 1,
+              lastOrderDate: new Date().toISOString(),
+              createdAt: serverTimestamp(),
+            });
+          }
         }
 
         // Update Product Stocks
-        // Revert old stocks if editing
-        if (editingSale) {
+        if (editingSale && editingSale.items) {
           for (const item of editingSale.items) {
-            if (productDocs[item.product_id]) {
-              const currentStock = productDocs[item.product_id].total_stock || 0;
+            const pid = item.product_id || (item as any).productId;
+            if (pid && productDocs[pid]) {
+              const currentStock = productDocs[pid].total_stock || 0;
               const newStock = currentStock + item.qty;
-              transaction.update(doc(db, 'products', item.product_id), { total_stock: newStock });
-              productDocs[item.product_id].total_stock = newStock;
+              transaction.update(doc(db, 'products', pid), { total_stock: newStock });
+              productDocs[pid].total_stock = newStock;
             }
           }
         }
 
         // Add/Update Sale Record
-        const saleRef = editingSale ? doc(db, 'sales', editingSale.id) : doc(collection(db, 'sales'));
+        const saleRef = (editingSale && editingSale.id) 
+          ? doc(db, 'sales', editingSale.id) 
+          : doc(collection(db, 'sales'));
 
         // Subtract new stocks
         for (const item of formData.items) {
-          if (productDocs[item.product_id]) {
-            const currentStock = productDocs[item.product_id].total_stock || 0;
+          const pid = item.product_id || (item as any).productId;
+          if (pid && productDocs[pid]) {
+            const currentStock = productDocs[pid].total_stock || 0;
             const newStock = currentStock - item.qty;
-            transaction.update(doc(db, 'products', item.product_id), { total_stock: newStock });
+            transaction.update(doc(db, 'products', pid), { total_stock: newStock });
             
             // Record Inventory Log
             const logRef = doc(collection(db, 'inventory_logs'));
             transaction.set(logRef, {
-              product_id: item.product_id,
-              productName: item.name,
+              product_id: pid,
+              productName: item.name || 'Unknown',
               type: 'OUT',
               qty: item.qty,
               referenceId: saleRef.id,
@@ -339,7 +411,7 @@ Thank you for your order!
               newQty: newStock,
             });
 
-            productDocs[item.product_id].total_stock = newStock;
+            productDocs[pid].total_stock = newStock;
           }
         }
 
@@ -351,23 +423,29 @@ Thank you for your order!
         });
 
         const saleData = {
-          order_no: orderNumber,
-          date: formData.date,
-          customer_id: customer_id,
-          customerName: formData.orderName || formData.facebookName,
-          items: formData.items,
-          paymentMethod: formData.paymentMethod,
-          payment_status: formData.payment_status,
-          address: formData.address,
-          deliveryDate: formData.deliveryDate,
-          subtotal,
-          gross_amount,
-          tax_amount,
-          net_amount,
-          deliveryFees: formData.deliveryFees,
-          total_amount: totalAmount,
-          profit: totalProfit,
-          note: formData.note,
+          order_no: orderNumber || 'PENDING',
+          date: formData.date || new Date().toISOString().split('T')[0],
+          customer_id: customer_id || '',
+          customerName: formData.orderName || formData.facebookName || 'Unknown',
+          items: (formData.items || []).map(item => ({
+            product_id: item.product_id || (item as any).productId || '',
+            name: item.name || 'Unknown',
+            qty: Number(item.qty || 0),
+            sold_price_snapshot: Number(item.sold_price_snapshot || 0),
+            cost_price_snapshot: Number(item.cost_price_snapshot || 0)
+          })),
+          paymentMethod: formData.paymentMethod || 'Kpay',
+          payment_status: formData.payment_status || 'Paid',
+          address: formData.address || '',
+          deliveryDate: formData.deliveryDate || '',
+          subtotal: Number(subtotal || 0),
+          gross_amount: Number(gross_amount || 0),
+          tax_amount: Number(tax_amount || 0),
+          net_amount: Number(net_amount || 0),
+          deliveryFees: Number(formData.deliveryFees || 0),
+          total_amount: Number(totalAmount || 0),
+          profit: isNaN(totalProfit) ? 0 : Number(totalProfit),
+          note: formData.note || '',
           updatedAt: serverTimestamp(),
         };
         
@@ -403,21 +481,28 @@ Thank you for your order!
   };
 
   const openEditModal = (sale: Sale) => {
-    const customer = customers.find(c => c.id === sale.customer_id);
+    if (!sale) return;
+    const customer = customers.find(c => c.id === (sale.customer_id || (sale as any).customerId));
     setEditingSale(sale);
     setFormData({
-      facebookName: customer?.facebookName || '',
-      orderName: sale.customerName,
-      phone: customer?.phone || '',
-      paymentMethod: sale.paymentMethod,
+      facebookName: customer?.facebookName || (sale as any).facebookName || (sale as any).customerName || '',
+      orderName: sale.customerName || '',
+      phone: customer?.phone || (sale as any).phone || '',
+      paymentMethod: sale.paymentMethod || 'Kpay',
       payment_status: sale.payment_status || 'Paid',
-      address: sale.address,
-      date: sale.date.split('T')[0],
-      deliveryDate: sale.deliveryDate,
-      deliveryFees: sale.deliveryFees || 0,
-      tax_amount: sale.tax_amount || 0,
+      address: sale.address || customer?.address || '',
+      date: (sale.date || '').split('T')[0] || format(new Date(), 'yyyy-MM-dd'),
+      deliveryDate: (sale.deliveryDate || '').split('T')[0] || '',
+      deliveryFees: Number(sale.deliveryFees || 0),
+      tax_amount: Number(sale.tax_amount || 0),
       note: sale.note || '',
-      items: sale.items,
+      items: (sale.items || []).map(item => ({
+        product_id: item.product_id || (item as any).productId || '',
+        name: item.name || 'Unknown',
+        qty: Number(item.qty || 0),
+        sold_price_snapshot: Number(item.sold_price_snapshot || 0),
+        cost_price_snapshot: Number(item.cost_price_snapshot || 0)
+      })),
     });
     setIsModalOpen(true);
   };
@@ -446,57 +531,64 @@ Thank you for your order!
       await runTransaction(db, async (transaction) => {
         // --- 1. READS SECTION ---
         const productDocs: { [id: string]: any } = {};
-        for (const item of sale.items) {
-          if (!productDocs[item.product_id]) {
-            const pRef = doc(db, 'products', item.product_id);
+        for (const item of (sale.items || [])) {
+          const pid = item.product_id || (item as any).productId;
+          if (pid && !productDocs[pid]) {
+            const pRef = doc(db, 'products', pid);
             const pDoc = await transaction.get(pRef);
             if (pDoc.exists()) {
-              productDocs[item.product_id] = pDoc.data();
+              productDocs[pid] = pDoc.data();
             }
           }
         }
 
-        const cRef = doc(db, 'customers', sale.customer_id);
-        const cDoc = await transaction.get(cRef);
+        const cid = sale.customer_id || (sale as any).customerId;
+        const cDoc = cid ? await transaction.get(doc(db, 'customers', cid)) : null;
 
         // --- 2. WRITES SECTION ---
-        for (const item of sale.items) {
-          if (productDocs[item.product_id]) {
-            const currentStock = productDocs[item.product_id].total_stock || 0;
+        for (const item of (sale.items || [])) {
+          const pid = item.product_id || (item as any).productId;
+          if (pid && productDocs[pid]) {
+            const currentStock = productDocs[pid].total_stock || 0;
             const newStock = currentStock + item.qty;
-            transaction.update(doc(db, 'products', item.product_id), { total_stock: newStock });
-            productDocs[item.product_id].total_stock = newStock;
+            transaction.update(doc(db, 'products', pid), { total_stock: newStock });
+            productDocs[pid].total_stock = newStock;
           }
         }
 
-        if (cDoc.exists()) {
+        if (cDoc?.exists()) {
           const subtotal = sale.subtotal || sale.total_amount;
           const pointsToSubtract = Math.floor(subtotal / 100000) * 30;
           const currentData = cDoc.data();
           const currentPoints = currentData.points || 0;
           const currentOrderCount = currentData.orderCount || 0;
           
-          transaction.update(cRef, { 
+          transaction.update(cDoc.ref, { 
             points: Math.max(0, currentPoints - pointsToSubtract),
             orderCount: Math.max(0, currentOrderCount - 1)
           });
         }
 
-        transaction.delete(doc(db, 'sales', sale.id));
+        if (sale.id) {
+          transaction.delete(doc(db, 'sales', sale.id));
 
-        // Log the return to inventory
-        sale.items.forEach(item => {
-          const logRef = doc(collection(db, 'inventory_logs'));
-          transaction.set(logRef, {
-            product_id: item.product_id,
-            productName: item.name,
-            type: 'IN',
-            qty: item.qty,
-            referenceId: sale.id,
-            reason: 'Sale Deleted (Stock Returned)',
-            date: serverTimestamp(),
+          // Log the return to inventory
+          (sale.items || []).forEach(item => {
+            const pid = item.product_id || (item as any).productId;
+            if (pid) {
+              const logRef = doc(collection(db, 'inventory_logs'));
+              transaction.set(logRef, {
+                product_id: pid,
+                productName: item.name || 'Unknown',
+                type: 'IN',
+                qty: item.qty,
+                referenceId: sale.id,
+                reason: 'Sale Deleted (Stock Returned)',
+                date: serverTimestamp(),
+              });
+            }
           });
-        });
+        }
       });
 
       notifyUndo({
@@ -505,45 +597,49 @@ Thank you for your order!
           await runTransaction(db, async (transaction) => {
             // --- 1. READS SECTION ---
             const productDocs: { [id: string]: any } = {};
-            for (const item of sale.items) {
-              if (!productDocs[item.product_id]) {
-                const pRef = doc(db, 'products', item.product_id);
+            for (const item of (sale.items || [])) {
+              const pid = item.product_id || (item as any).productId;
+              if (pid && !productDocs[pid]) {
+                const pRef = doc(db, 'products', pid);
                 const pDoc = await transaction.get(pRef);
                 if (pDoc.exists()) {
-                  productDocs[item.product_id] = pDoc.data();
+                  productDocs[pid] = pDoc.data();
                 }
               }
             }
 
-            const cRef = doc(db, 'customers', sale.customer_id);
-            const cDoc = await transaction.get(cRef);
+            const cid = sale.customer_id || (sale as any).customerId;
+            const cDoc = cid ? await transaction.get(doc(db, 'customers', cid)) : null;
 
             // --- 2. WRITES SECTION ---
-            for (const item of sale.items) {
-              if (productDocs[item.product_id]) {
-                const pRef = doc(db, 'products', item.product_id);
+            for (const item of (sale.items || [])) {
+              const pid = item.product_id || (item as any).productId;
+              if (pid && productDocs[pid]) {
+                const pRef = doc(db, 'products', pid);
                 transaction.update(pRef, { 
-                  total_stock: (productDocs[item.product_id].total_stock || 0) - item.qty 
+                  total_stock: (productDocs[pid].total_stock || 0) - item.qty 
                 });
               }
             }
 
-            if (cDoc.exists()) {
+            if (cDoc?.exists()) {
               const subtotal = sale.subtotal || sale.total_amount;
               const pointsToAdd = Math.floor(subtotal / 100000) * 30;
               const currentData = cDoc.data();
-              transaction.update(cRef, { 
+              transaction.update(cDoc.ref, { 
                 points: (currentData.points || 0) + pointsToAdd,
                 orderCount: (currentData.orderCount || 0) + 1
               });
             }
 
-            const { id, ...data } = sale;
-            transaction.set(doc(db, 'sales', id), {
-              ...data,
-              updatedAt: serverTimestamp(),
-              isUndone: true
-            });
+            if (sale.id) {
+              const { id, ...data } = sale;
+              transaction.set(doc(db, 'sales', id), {
+                ...data,
+                updatedAt: serverTimestamp(),
+                isUndone: true
+              });
+            }
           });
         }
       });
@@ -662,11 +758,15 @@ Thank you for your order!
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
-                    {sale.items.map((item, i) => (
-                      <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
-                        {item.qty}x {item.name}
-                      </span>
-                    ))}
+                    {sale.items.map((item, i) => {
+                      const master = masterProducts.find(m => m.name.toLowerCase() === item.name.toLowerCase());
+                      const code = master?.productCode || '';
+                      return (
+                        <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
+                          {item.qty}x {item.name}{code && ` (${code})`}
+                        </span>
+                      );
+                    })}
                   </div>
                 </td>
                 <td className="px-6 py-4">

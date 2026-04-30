@@ -230,8 +230,10 @@ export function Inventory() {
   const exportToExcel = () => {
     const data = sortedProducts.map(p => {
       const category = categories.find(c => c.id === p.categoryId);
+      const masterProduct = masterProducts.find(m => m.name.toLowerCase() === p.name.toLowerCase());
+      const displayCode = masterProduct?.productCode || p.productCode || '';
       return {
-        'Product Code': p.productCode || '',
+        'Product Code': displayCode,
         'Brand': p.brand || '',
         'Product Name': p.name,
         'Category': category?.name || '',
@@ -406,10 +408,12 @@ export function Inventory() {
               <tbody className="divide-y divide-slate-100">
                 {sortedProducts.map((product) => {
                   const isLowStock = product.total_stock < 10;
+                  const masterProduct = masterProducts.find(m => m.name.toLowerCase() === product.name.toLowerCase());
+                  const displayCode = masterProduct?.productCode || product.productCode || '-';
 
                   return (
                     <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-6 py-4 text-slate-500 font-mono text-xs">{product.productCode || '-'}</td>
+                      <td className="px-6 py-4 text-slate-500 font-mono text-xs">{displayCode}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
                       <td className="px-6 py-4 text-slate-600 text-xs">

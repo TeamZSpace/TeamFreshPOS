@@ -457,6 +457,8 @@ export function Purchase() {
           <tbody className="divide-y divide-slate-100">
             {sortedPurchases.map((purchase) => {
               const product = products.find(p => p.id === purchase.product_id);
+              const masterProduct = masterProducts.find(m => m.name.toLowerCase() === (product?.name || '').toLowerCase());
+              const displayCode = masterProduct?.productCode || product?.productCode || '-';
               const supplier = suppliers.find(s => s.id === purchase.supplierId);
               const category = categories.find(c => c.id === purchase.categoryId);
               return (
@@ -464,7 +466,7 @@ export function Purchase() {
                   <td className="px-6 py-4 text-slate-600 text-xs">
                     {format(new Date(purchase.date), 'MMM d, yyyy')}
                   </td>
-                  <td className="px-6 py-4 text-slate-600 text-xs font-mono">{product?.productCode || '-'}</td>
+                  <td className="px-6 py-4 text-slate-600 text-xs font-mono">{displayCode}</td>
                   <td className="px-6 py-4 font-medium text-slate-900">{product?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-slate-600 text-xs">{category?.name || '-'}</td>
                   <td className="px-6 py-4 text-slate-600 text-xs">{supplier?.name || 'Unknown'}</td>

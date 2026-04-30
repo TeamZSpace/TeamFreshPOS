@@ -32,10 +32,17 @@ interface Product {
   current_selling_price: number;
 }
 
+interface MasterProduct {
+  id: string;
+  name: string;
+  productCode: string;
+}
+
 export function Report() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>([]);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [isLoading, setIsLoading] = useState(true);
   const [isExportingMaster, setIsExportingMaster] = useState(false);
@@ -64,10 +71,15 @@ export function Report() {
       setIsLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
 
+    const unsubMaster = onSnapshot(collection(db, 'productMaster'), (snapshot) => {
+      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct)));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
+
     return () => {
       unsubSales();
       unsubExpenses();
       unsubProducts();
+      unsubMaster();
     };
   }, []);
 
@@ -401,6 +413,7 @@ export function Report() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Code</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Name</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Units Sold</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Total Revenue</th>
@@ -426,9 +439,11 @@ export function Report() {
                 if (productSales.units === 0) return null;
 
                 const profit = productSales.revenue - productSales.cost;
+                const master = masterProducts.find(m => m.name.toLowerCase() === product.name.toLowerCase());
 
                 return (
                   <tr key={product.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs text-slate-500">{master?.productCode || '-'}</td>
                     <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
                     <td className="px-6 py-4 text-center text-slate-600 font-bold">{productSales.units}</td>
                     <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(productSales.revenue)}</td>
@@ -459,6 +474,7 @@ export function Report() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-4 text-sm font-semibold text-slate-600">Code</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600">Product Name</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Purchase Price</th>
                 <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-right">Selling Price</th>
@@ -472,8 +488,10 @@ export function Report() {
                 const avgCost = product.average_cost_price || 0;
                 const marginPercentResult = avgCost > 0 ? (margin / avgCost) * 100 : 0;
                 const marginPercent = isNaN(marginPercentResult) ? 0 : marginPercentResult;
+                const master = masterProducts.find(m => m.name.toLowerCase() === product.name.toLowerCase());
                 return (
                   <tr key={product.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-mono text-xs text-slate-500">{master?.productCode || '-'}</td>
                     <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
                     <td className="px-6 py-4 text-right text-slate-600">{formatMMK(product.average_cost_price)}</td>
                     <td className="px-6 py-4 text-right text-slate-900 font-bold">{formatMMK(product.current_selling_price)}</td>

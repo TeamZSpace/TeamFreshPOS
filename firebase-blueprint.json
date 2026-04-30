@@ -31,12 +31,11 @@
         "qty": { "type": "number" },
         "purchase_price": { "type": "number" },
         "current_selling_price": { "type": "number" },
-        "shipping": { "type": "number" },
         "supplierId": { "type": "string" },
         "categoryId": { "type": "string" },
         "total_amount": { "type": "number" }
       },
-      "required": ["date", "product_id", "qty", "purchase_price", "current_selling_price", "shipping", "total_amount"]
+      "required": ["date", "product_id", "qty", "purchase_price", "current_selling_price", "total_amount"]
     },
     "Sale": {
       "title": "Sale",

@@ -16,7 +16,6 @@ interface Purchase {
   qty: number;
   purchase_price: number;
   current_selling_price: number;
-  shipping: number;
   total_amount: number;
   expiryDate?: string;
 }
@@ -81,7 +80,6 @@ export function Purchase() {
     qty: 0,
     purchase_price: 0,
     current_selling_price: 0,
-    shipping: 0,
     date: format(new Date(), 'yyyy-MM-dd'),
     expiryDate: '',
     productCode: '',
@@ -121,7 +119,7 @@ export function Purchase() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const newPurchaseTotal = (formData.qty * formData.purchase_price) + formData.shipping;
+      const newPurchaseTotal = (formData.qty * formData.purchase_price);
 
       await runTransaction(db, async (transaction) => {
         const productRef = doc(db, 'products', formData.product_id);
@@ -269,7 +267,6 @@ export function Purchase() {
       qty: p.qty,
       purchase_price: p.purchase_price,
       current_selling_price: p.current_selling_price,
-      shipping: p.shipping,
       date: p.date.split('T')[0],
       expiryDate: p.expiryDate || '',
       productCode: products.find(prod => prod.id === p.product_id)?.productCode || '',
@@ -287,7 +284,6 @@ export function Purchase() {
       qty: 0, 
       purchase_price: 0, 
       current_selling_price: 0,
-      shipping: 0, 
       date: format(new Date(), 'yyyy-MM-dd'),
       expiryDate: '',
       productCode: '',
@@ -383,7 +379,6 @@ export function Purchase() {
         'Supplier': supplier?.name || '',
         'Quantity': p.qty,
         'Unit Cost': p.purchase_price,
-        'Shipping': p.shipping,
         'Total Amount': p.total_amount
       };
     });
@@ -442,11 +437,8 @@ export function Purchase() {
                 <div className="flex items-center justify-end">Purchase Price{getSortIcon('purchase_price')}</div>
               </th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Expiry</th>
-              <th onClick={() => requestSort('current_selling_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
+              <th onClick={() => requestSort( 'current_selling_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
                 <div className="flex items-center justify-end">Sales Price{getSortIcon('current_selling_price')}</div>
-              </th>
-              <th onClick={() => requestSort('shipping')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
-                <div className="flex items-center justify-end">Shipping{getSortIcon('shipping')}</div>
               </th>
               <th onClick={() => requestSort('total_amount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
                 <div className="flex items-center justify-end">Total{getSortIcon('total_amount')}</div>
@@ -478,7 +470,6 @@ export function Purchase() {
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right text-pink-600 font-bold">{formatMMK(purchase.current_selling_price)}</td>
-                  <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.shipping)}</td>
                   <td className="px-6 py-4 text-right font-bold text-slate-900">{formatMMK(purchase.total_amount)}</td>
                   <td className="px-6 py-4 text-center">
                     <div className="flex items-center justify-center gap-1">
@@ -577,6 +568,7 @@ export function Purchase() {
                   <option value="">Select Product from Master</option>
                   {masterProducts
                     .filter(p => p.name.toLowerCase().includes(productSearch.toLowerCase()) || (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())))
+                    .sort((a, b) => a.name.localeCompare(b.name))
                     .map(p => {
                       const codeDisplay = p.productCode ? ` (${p.productCode})` : '';
                       const brandDisplay = p.brand ? ` - ${p.brand}` : '';
@@ -625,7 +617,7 @@ export function Purchase() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Purchase Price</label>
                   <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.purchase_price || 0} onChange={(e) => setFormData({ ...formData, purchase_price: parseFloat(e.target.value) || 0 })} />
@@ -634,15 +626,11 @@ export function Purchase() {
                   <label className="text-sm font-semibold text-slate-700">Sales Price</label>
                   <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.current_selling_price || 0} onChange={(e) => setFormData({ ...formData, current_selling_price: parseFloat(e.target.value) || 0 })} />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-sm font-semibold text-slate-700">Shipping Cost</label>
-                  <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.shipping || 0} onChange={(e) => setFormData({ ...formData, shipping: parseFloat(e.target.value) || 0 })} />
-                </div>
               </div>
 
               <div className="pt-4 border-t border-slate-100 flex items-center justify-between sticky bottom-0 bg-white pt-4">
                 <div className="text-sm text-slate-500">
-                  Total: <span className="text-lg font-bold text-slate-900">{formatMMK((formData.qty * formData.purchase_price) + formData.shipping)}</span>
+                  Total: <span className="text-lg font-bold text-slate-900">{formatMMK((formData.qty * formData.purchase_price))}</span>
                 </div>
                 <div className="flex gap-3">
                   <button type="button" onClick={closeModal} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>

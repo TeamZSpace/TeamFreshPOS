@@ -555,7 +555,7 @@ export function Inventory() {
                     value=""
                   >
                     <option value="">-- Select to auto-fill --</option>
-                    {masterProducts.map(m => (
+                    {[...masterProducts].sort((a, b) => a.name.localeCompare(b.name)).map(m => (
                       <option key={m.id} value={m.id}>{m.name} ({m.productCode})</option>
                     ))}
                   </select>

@@ -13,6 +13,7 @@ interface Sale {
   date: string;
   customer_id: string;
   customerName: string;
+  phone?: string;
   items: { product_id: string; name: string; qty: number; sold_price_snapshot: number; cost_price_snapshot: number }[];
   paymentMethod: string;
   payment_status: 'Paid' | 'Unpaid' | 'Partial';
@@ -96,8 +97,17 @@ export function Sales() {
     items: [] as { product_id: string; name: string; qty: number; sold_price_snapshot: number; cost_price_snapshot: number }[],
   });
   const [productSearch, setProductSearch] = useState('');
+  const [columnFilters, setColumnFilters] = useState({
+    order_no: '',
+    date: '',
+    customerName: '',
+    phone: '',
+    productCode: '',
+    paymentMethod: '',
+    payment_status: '',
+  });
 
-  const paymentMethods = ['Kpay', 'WavePay', 'AYAPay', 'uabpay', 'Bank', 'Cash', 'Credit', 'COD (Cash on Deli)'];
+  const paymentMethods = ['Kpay', 'WavePay', 'AYAPay', 'uabpay', 'Bank', 'Cash', 'Credit', 'COD'];
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
@@ -281,8 +291,6 @@ Thank you for your order!
           const pDoc = await transaction.get(pRef);
           if (pDoc.exists()) {
             productDocs[pid] = pDoc.data();
-          } else if (formData.items.some(item => item.product_id === pid)) {
-            throw new Error(`Product not found: ${pid}`);
           }
         }
 
@@ -436,6 +444,7 @@ Thank you for your order!
           date: formData.date || new Date().toISOString().split('T')[0],
           customer_id: customer_id || '',
           customerName: formData.orderName || formData.facebookName || 'Unknown',
+          phone: englishPhone,
           items: (formData.items || []).map(item => ({
             product_id: item.product_id || (item as any).productId || '',
             name: item.name || 'Unknown',
@@ -657,19 +666,56 @@ Thank you for your order!
     }
   };
 
-  const filteredSales = sales.filter(s => 
-    (s.customerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (s.order_no || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredSales = sales.filter(s => {
+    // Global filter
+    const matchesSearch = (s.customerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (s.order_no || '').toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (!matchesSearch) return false;
+
+    // Column filters
+    const phone = s.phone || customers.find(c => c.id === s.customer_id)?.phone || '';
+    const itemCodes = s.items.map(i => {
+      const product = products.find(p => p.id === i.product_id);
+      const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
+      return product?.productCode || master?.productCode || 'N/A';
+    }).join(' ');
+
+    return (
+      (columnFilters.order_no === '' || (s.order_no || '') === columnFilters.order_no) &&
+      (columnFilters.date === '' || (s.date || '') === columnFilters.date) &&
+      (columnFilters.customerName === '' || (s.customerName || '') === columnFilters.customerName) &&
+      (columnFilters.phone === '' || phone === columnFilters.phone) &&
+      (columnFilters.productCode === '' || itemCodes.includes(columnFilters.productCode)) &&
+      (columnFilters.paymentMethod === '' || (s.paymentMethod || '') === columnFilters.paymentMethod) &&
+      (columnFilters.payment_status === '' || (s.payment_status || '') === columnFilters.payment_status)
+    );
+  });
 
   const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'date', direction: 'desc' });
+
+  // Get unique values for dropdowns
+  const uniqueOrderNos = Array.from(new Set(sales.map(s => s.order_no))).filter(Boolean).sort();
+  const uniqueDates = Array.from(new Set(sales.map(s => s.date))).filter(Boolean).sort().reverse();
+  const uniqueCustomerNames = Array.from(new Set(sales.map(s => s.customerName))).filter(Boolean).sort();
+  const uniquePhones = Array.from(new Set(sales.map(s => s.phone || customers.find(c => c.id === s.customer_id)?.phone))).filter(Boolean).sort();
+  const uniqueProductCodes = Array.from(new Set(sales.flatMap(s => s.items.map(i => {
+    const product = products.find(p => p.id === i.product_id);
+    const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
+    return product?.productCode || master?.productCode || 'N/A';
+  })))).filter(Boolean).sort();
 
   const exportToExcel = () => {
     const data = sortedSales.map(s => ({
       'Order #': s.order_no,
       'Date': s.date,
       'Customer': s.customerName,
-      'Items': s.items.map(i => `${i.name} x${i.qty}`).join(', '),
+      'Phone': s.phone || customers.find(c => c.id === s.customer_id)?.phone || '',
+      'Product Code': s.items.map(i => {
+        const product = products.find(p => p.id === i.product_id);
+        const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
+        return `${i.qty}x ${product?.productCode || master?.productCode || 'N/A'}`;
+      }).join(', '),
       'Payment': s.paymentMethod,
       'Status': s.payment_status,
       'Gross Amount': s.gross_amount || s.subtotal,
@@ -727,20 +773,102 @@ Thank you for your order!
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200">
               <th onClick={() => requestSort('order_no')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Order #{getSortIcon('order_no')}</div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center">Order #{getSortIcon('order_no')}</div>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.order_no}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, order_no: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    {uniqueOrderNos.map(no => <option key={no} value={no}>{no}</option>)}
+                  </select>
+                </div>
               </th>
               <th onClick={() => requestSort('date')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Date{getSortIcon('date')}</div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center">Date{getSortIcon('date')}</div>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.date}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, date: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    {uniqueDates.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
               </th>
               <th onClick={() => requestSort('customerName')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Customer{getSortIcon('customerName')}</div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center">Customer{getSortIcon('customerName')}</div>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.customerName}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, customerName: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    {uniqueCustomerNames.map(name => <option key={name} value={name}>{name}</option>)}
+                  </select>
+                </div>
               </th>
-              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Items</th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600" style={{ width: '150px' }}>
+                <div className="flex flex-col gap-2">
+                  <span>Phone</span>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.phone}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, phone: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    {uniquePhones.map(phone => <option key={phone} value={phone}>{phone}</option>)}
+                  </select>
+                </div>
+              </th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600" style={{ width: '178px' }}>
+                <div className="flex flex-col gap-2">
+                  <span>Product code</span>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.productCode}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, productCode: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    {uniqueProductCodes.map(code => <option key={code} value={code}>{code}</option>)}
+                  </select>
+                </div>
+              </th>
               <th onClick={() => requestSort('paymentMethod')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Payment{getSortIcon('paymentMethod')}</div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center">Payment{getSortIcon('paymentMethod')}</div>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.paymentMethod}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, paymentMethod: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    {paymentMethods.map(m => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                </div>
               </th>
               <th onClick={() => requestSort('payment_status')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
-                <div className="flex items-center">Status{getSortIcon('payment_status')}</div>
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center">Status{getSortIcon('payment_status')}</div>
+                  <select 
+                    className="w-full px-2 py-1 text-[10px] font-normal border border-slate-200 rounded focus:ring-1 focus:ring-pink-500 outline-none bg-white"
+                    value={columnFilters.payment_status}
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setColumnFilters({ ...columnFilters, payment_status: e.target.value })}
+                  >
+                    <option value="">All</option>
+                    <option value="Paid">Paid</option>
+                    <option value="Unpaid">Unpaid</option>
+                    <option value="Partial">Partial</option>
+                  </select>
+                </div>
               </th>
               <th onClick={() => requestSort('deliveryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Delivery{getSortIcon('deliveryDate')}</div>
@@ -765,14 +893,18 @@ Thank you for your order!
                     <span className="text-[10px] text-slate-500 truncate max-w-[150px]">{sale.address}</span>
                   </div>
                 </td>
+                <td className="px-6 py-4 text-slate-600 text-[11px] font-mono">
+                  {sale.phone || customers.find(c => c.id === sale.customer_id)?.phone}
+                </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
                     {sale.items.map((item, i) => {
+                      const product = products.find(p => p.id === item.product_id);
                       const master = masterProducts.find(m => m.name.toLowerCase() === item.name.toLowerCase());
-                      const code = master?.productCode || '';
+                      const code = product?.productCode || master?.productCode || 'N/A';
                       return (
-                        <span key={i} className="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px] font-medium">
-                          {item.qty}x {item.name}{code && ` (${code})`}
+                        <span key={i} className="px-2 py-0.5 bg-pink-50 text-pink-700 rounded text-[10px] font-bold border border-pink-100">
+                          {item.qty}x {code}
                         </span>
                       );
                     })}
@@ -988,6 +1120,7 @@ Thank you for your order!
                             (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()))
                           );
                         })
+                        .sort((a, b) => a.name.localeCompare(b.name))
                         .map(p => {
                           const category = categories.find(c => c.id === p.categoryId);
                           const catDisplay = category ? ` [${category.name}]` : '';

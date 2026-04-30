@@ -146,24 +146,24 @@ service cloud.firestore {
     }
 
     function isValidPurchase(data) {
-      return hasRequiredFields(['date', 'product_id', 'qty', 'total_amount']) &&
+      return hasRequiredFields(['date', 'product_id', 'qty', 'purchase_price', 'current_selling_price', 'total_amount']) &&
              isValidString('date', 1, 30) &&
              isValidString('product_id', 1, 50) &&
              isValidOptionalString('supplierId', 50) &&
              isValidOptionalString('categoryId', 50) &&
              isValidOptionalString('expiryDate', 10) &&
+             isValidOptionalString('productCode', 50) &&
              isPositive('qty') &&
              isPositive('total_amount') &&
              isPositive('purchase_price') &&
-             isPositive('current_selling_price') &&
-             isPositive('shipping');
+             isPositive('current_selling_price');
     }
 
     function isValidInventoryLog(data) {
       return hasRequiredFields(['product_id', 'productName', 'type', 'qty', 'reason', 'date']) &&
              isValidString('product_id', 1, 50) &&
              isValidString('productName', 1, 200) &&
-             data.type in ['IN', 'OUT', 'ADJUST'] &&
+             (data.type == 'IN' || data.type == 'OUT' || data.type == 'ADJUST') &&
              data.qty is number &&
              isValidString('reason', 1, 500) &&
              data.date is timestamp;
@@ -198,12 +198,12 @@ service cloud.firestore {
              isValidOptionalString('dosage', 100) &&
              isValidOptionalString('unitCount', 100) &&
              isValidOptionalString('dosageForm', 100) &&
-             (!( 'type' in data) || data.type in ['Packing', 'Travel']);
+             (!( 'type' in data) || data.type == 'Packing' || data.type == 'Travel');
     }
 
     function isValidBackup(data) {
       return hasRequiredFields(['timestamp', 'data', 'status']) &&
-             data.status in ['success', 'failed'];
+             (data.status == 'success' || data.status == 'failed');
     }
 
     function isValidPartner(data) {

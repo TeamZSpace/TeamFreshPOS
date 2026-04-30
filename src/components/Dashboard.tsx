@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
-import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight, FileSpreadsheet, RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight, FileSpreadsheet, RefreshCw, Calculator } from 'lucide-react';
 import { handleFirestoreError, OperationType, cn, formatMMK } from '../lib/utils';
 import { format, subDays, isAfter } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -205,7 +205,7 @@ export function Dashboard() {
     return { name: format(date, 'MMM d'), sales: daySales };
   }).reverse();
 
-  const StatCard = ({ title, value, icon: Icon, color, trend }: any) => (
+  const StatCard = ({ title, value, icon: Icon, color, trend, description }: any) => (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
       <div className="flex items-start justify-between mb-4">
         <div className={cn("p-3 rounded-xl", color)}>
@@ -223,6 +223,7 @@ export function Dashboard() {
       </div>
       <p className="text-sm font-semibold text-slate-500 uppercase tracking-wider mb-1">{title}</p>
       <p className="text-2xl font-black text-slate-900 tracking-tight">{formatMMK(value)}</p>
+      {description && <p className="text-[10px] text-slate-400 mt-2 font-medium leading-tight">{description}</p>}
     </div>
   );
 
@@ -233,21 +234,39 @@ export function Dashboard() {
           <h2 className="text-xl font-bold text-slate-900">Dashboard Summary</h2>
           <p className="text-sm text-slate-500">Real-time business performance metrics.</p>
         </div>
-        <button
-          onClick={handleMasterExport}
-          disabled={isExporting}
-          className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 text-white rounded-xl font-semibold transition-all shadow-lg shadow-pink-100 group"
-        >
-          {isExporting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />}
-          <span>{isExporting ? 'Exporting...' : 'Master Excel Export'}</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <div className="hidden md:flex flex-col items-end mr-4">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Formula Logic</span>
+            <span className="text-[11px] text-slate-600 font-medium">Accrual Basis Accounting</span>
+          </div>
+          <button
+            onClick={handleMasterExport}
+            disabled={isExporting}
+            className="flex items-center gap-2 px-4 py-2 bg-pink-600 hover:bg-pink-700 disabled:bg-pink-300 text-white rounded-xl font-semibold transition-all shadow-lg shadow-pink-100 group"
+          >
+            {isExporting ? <RefreshCw className="w-5 h-5 animate-spin" /> : <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />}
+            <span>{isExporting ? 'Exporting...' : 'Master Excel Export'}</span>
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
         <StatCard title="Total Sales" value={totalSales} icon={TrendingUp} color="bg-pink-50 text-pink-600" />
-        <StatCard title="COGS" value={totalCOGS} icon={Package} color="bg-slate-50 text-slate-600" />
+        <StatCard 
+          title="COGS" 
+          value={totalCOGS} 
+          icon={Package} 
+          color="bg-slate-50 text-slate-600" 
+          description="Cost of Goods Sold: Total cost of units sold (Quantity × Cost Price)."
+        />
         <StatCard title="Total Purchases" value={totalPurchases} icon={ShoppingBag} color="bg-blue-50 text-blue-600" />
         <StatCard title="Total Expenses" value={totalExpenses} icon={TrendingDown} color="bg-rose-50 text-rose-600" />
-        <StatCard title="Net Profit" value={netProfit} icon={DollarSign} color="bg-emerald-50 text-emerald-600" />
+        <StatCard 
+          title="Net Profit" 
+          value={netProfit} 
+          icon={DollarSign} 
+          color="bg-emerald-50 text-emerald-600" 
+          description="Revenue - COGS - Expenses. Real-time bottom line profit."
+        />
         <StatCard title="Inventory Value" value={inventoryValue} icon={Package} color="bg-amber-50 text-amber-600" />
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
           <div className="flex items-start justify-between mb-4">
@@ -334,6 +353,67 @@ export function Dashboard() {
                   <p className="text-sm text-slate-400">All stock levels healthy</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 className="text-lg font-bold text-slate-900 mb-6 font-mono uppercase tracking-tight flex items-center gap-2">
+          <Calculator className="w-5 h-5 text-pink-600" />
+          Accounting Policies & Logic
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4">
+            <div className="flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center text-slate-600 font-bold shrink-0">1</div>
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">COGS (Cost of Goods Sold)</h4>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Calculated using the <span className="font-bold text-slate-700 italic">Actual Cost at Sale</span> method. 
+                  When a sale is recorded, the system captures the current average cost of the product. 
+                  Formula: <code className="bg-slate-50 px-1 py-0.5 rounded text-pink-600 font-bold">Σ (Quantity Sold × Unit Cost Snapshot)</code>.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-start gap-4">
+              <div className="w-8 h-8 rounded-lg bg-pink-50 flex items-center justify-center text-pink-600 font-bold shrink-0">2</div>
+              <div>
+                <h4 className="font-bold text-slate-900 text-sm">Net Profit Calculation</h4>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Represents the real bottom line after all costs and operating expenses. 
+                  Formula: <code className="bg-slate-50 px-1 py-0.5 rounded text-pink-600 font-bold">Revenue - COGS - Total Expenses</code>. 
+                  This excludes Inventory Purchases (Repurchases) to reflect operational profit rather than cash flow.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="bg-slate-50 p-6 rounded-2xl border border-slate-100 relative overflow-hidden group">
+            <TrendingUp className="absolute -right-8 -bottom-8 w-32 h-32 text-white opacity-40 group-hover:scale-110 transition-transform duration-500" />
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4">Quick Financial Health</h4>
+            <div className="space-y-3 relative z-10">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">Gross Sales</span>
+                <span className="font-bold text-slate-900">{formatMMK(totalSales)}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">COGS (Direct Costs)</span>
+                <span className="font-bold text-rose-500">-{formatMMK(totalCOGS)}</span>
+              </div>
+              <div className="w-full h-px bg-slate-200 my-1" />
+              <div className="flex justify-between items-center text-sm">
+                <span className="font-bold text-slate-900">Gross Profit</span>
+                <span className="font-bold text-pink-600">{formatMMK(grossProfit)}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">Operating Expenses</span>
+                <span className="font-bold text-rose-500">-{formatMMK(totalExpenses)}</span>
+              </div>
+              <div className="w-full h-px bg-slate-400 my-1 opacity-20" />
+              <div className="flex justify-between items-center">
+                <span className="font-black text-slate-900">Net Profit</span>
+                <span className="text-lg font-black text-emerald-600">{formatMMK(netProfit)}</span>
+              </div>
             </div>
           </div>
         </div>

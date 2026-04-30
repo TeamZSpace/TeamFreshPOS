@@ -139,14 +139,23 @@ export function Sales() {
     };
   }, []);
 
+  const getProductStockLimit = (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    if (!product) return 0;
+    const originalItem = editingSale?.items.find(i => (i.product_id || (i as any).productId) === productId);
+    const originalQty = Number(originalItem?.qty || 0);
+    return Number(product.total_stock || 0) + originalQty;
+  };
+
   const handleAddItem = (productId: string) => {
     const product = products.find(p => p.id === productId);
     if (!product) return;
     
+    const limit = getProductStockLimit(productId);
     const existingItem = formData.items.find(item => item.product_id === productId);
     if (existingItem) {
-      if (existingItem.qty >= product.total_stock) {
-        alert(`Only ${product.total_stock} units of "${product.name}" are available in stock.`);
+      if (existingItem.qty >= limit) {
+        alert(`Only ${limit} units of "${product.name}" are available in stock.`);
         return;
       }
       setFormData({
@@ -156,7 +165,7 @@ export function Sales() {
         )
       });
     } else {
-      if (product.total_stock <= 0) {
+      if (limit <= 0) {
         alert(`"${product.name}" is out of stock.`);
         return;
       }
@@ -971,11 +980,14 @@ Thank you for your order!
                     >
                       <option value="">Select a product...</option>
                       {products
-                        .filter(p => (p.total_stock || 0) > 0 && (
-                          p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
-                          (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())) ||
-                          (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()))
-                        ))
+                        .filter(p => {
+                          const limit = getProductStockLimit(p.id);
+                          return limit > 0 && (
+                            p.name.toLowerCase().includes(productSearch.toLowerCase()) || 
+                            (p.productCode && p.productCode.toLowerCase().includes(productSearch.toLowerCase())) ||
+                            (p.brand && p.brand.toLowerCase().includes(productSearch.toLowerCase()))
+                          );
+                        })
                         .map(p => {
                           const category = categories.find(c => c.id === p.categoryId);
                           const catDisplay = category ? ` [${category.name}]` : '';
@@ -1016,10 +1028,12 @@ Thank you for your order!
                                 <span className="text-sm font-bold w-4 text-center">{item.qty}</span>
                                 <button type="button" onClick={() => {
                                   const newItems = [...formData.items];
-                                  const product = products.find(p => p.id === item.product_id);
-                                  if (product && newItems[index].qty < product.total_stock) {
+                                  const limit = getProductStockLimit(item.product_id);
+                                  if (newItems[index].qty < limit) {
                                     newItems[index].qty++;
                                     setFormData({...formData, items: newItems});
+                                  } else {
+                                    alert(`Only ${limit} units are available.`);
                                   }
                                 }} className="w-6 h-6 flex items-center justify-center bg-slate-100 rounded hover:bg-slate-200">+</button>
                               </div>

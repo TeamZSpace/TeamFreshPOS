@@ -69,11 +69,18 @@ export function ProductMaster() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!formData.name.trim()) {
+      alert('Please fill in some details (Brand, Category, etc.) to generate a product name.');
+      return;
+    }
+
     // Check for duplicate names or codes
-    const isDuplicate = products.some(p => 
-      (p.name.toLowerCase() === formData.name.toLowerCase() || p.productCode.toLowerCase() === formData.productCode.toLowerCase()) && 
-      (!editingProduct || p.id !== editingProduct.id)
-    );
+    const isDuplicate = products.some(p => {
+      const nameMatch = (p.name || '').toLowerCase() === (formData.name || '').toLowerCase();
+      const codeMatch = (p.productCode || '').toLowerCase() === (formData.productCode || '').toLowerCase() && formData.productCode;
+      
+      return (nameMatch || codeMatch) && (!editingProduct || p.id !== editingProduct.id);
+    });
 
     if (isDuplicate) {
       alert('A product with this name or code already exists.');

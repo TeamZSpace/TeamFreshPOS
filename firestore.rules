@@ -190,7 +190,7 @@ service cloud.firestore {
     }
 
     function isValidProductMaster(data) {
-      return hasRequiredFields(['name', 'productCode', 'type']) &&
+      return hasRequiredFields(['name', 'productCode']) &&
              isValidString('name', 1, 200) &&
              isValidString('productCode', 1, 50) &&
              isValidOptionalString('brand', 100) &&
@@ -198,7 +198,7 @@ service cloud.firestore {
              isValidOptionalString('dosage', 100) &&
              isValidOptionalString('unitCount', 100) &&
              isValidOptionalString('dosageForm', 100) &&
-             data.type in ['Packing', 'Travel'];
+             (!( 'type' in data) || data.type in ['Packing', 'Travel']);
     }
 
     function isValidBackup(data) {

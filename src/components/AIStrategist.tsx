@@ -6,6 +6,7 @@ import { GoogleGenAI } from "@google/genai";
 import { formatMMK, cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
+import ReactMarkdown from 'react-markdown';
 
 interface Message {
   role: 'user' | 'model';
@@ -18,7 +19,7 @@ export function AIStrategist() {
   const [messages, setMessages] = React.useState<Message[]>([
     {
       role: 'model',
-      text: "Mingalaba! I'm your FreshPOS Business Strategist. I can help you analyze your sales, find slow-moving products, and suggest marketing ideas for Facebook and TikTok. How can I help you today?",
+      text: "မင်္ဂလာပါ! ကျွန်တော်က FreshPOS ရဲ့ Business Strategist AI ပါ။ အရောင်းစာရင်းတွေကို analyze လုပ်ပေးတာ၊ ရောင်းအားနှေးတဲ့ product တွေကို ရှာဖွေပေးတာနဲ့ Facebook/TikTok မှာ ဘယ်လို content မျိုးနဲ့ ရောင်းသင့်လဲဆိုတဲ့ အကြံဉာဏ်တွေကို ပေးနိုင်ပါတယ်။ ဘာများ ကူညီပေးရမလဲခင်ဗျာ?",
       timestamp: new Date()
     }
   ]);
@@ -81,8 +82,11 @@ export function AIStrategist() {
       
       Instructions:
       - You are 'FreshPOS Business Strategist', an expert AI advisor for skin care and supplement shops in Myanmar.
+      - You MUST correspond in Myanmar language (Burmese) using the Burmese script.
       - Use the context above to provide specific, data-driven advice.
+      - Use Markdown for your responses. Specifically, use bullet points (*) or numbered lists for suggestions, content ideas, and product lists.
       - If asked about FB/TikTok, provide content ideas (e.g. Hooks, Video styles) tailored for these platforms in the Myanmar market.
+      - Provide video titles, captions, and script ideas in Burmese.
       - Keep responses professional but friendly (Mingalaba style).
       - Use formatMMK (Kyat) concepts when talking about money.
     `;
@@ -125,7 +129,7 @@ export function AIStrategist() {
         ]
       });
 
-      const responseText = response.text || "I'm sorry, I couldn't generate a strategy right now. Please try again.";
+      const responseText = response.text || "တောင်းပန်ပါတယ်၊ အခုလောလောဆယ် အကြံဉာဏ်မပေးနိုင်သေးပါဘူး။ နောက်မှ ပြန်ကြိုးစားကြည့်ပေးပါ။";
       
       setMessages(prev => [...prev, {
         role: 'model',
@@ -136,7 +140,7 @@ export function AIStrategist() {
       console.error('AI Error:', error);
       setMessages(prev => [...prev, {
         role: 'model',
-        text: "I encountered an error while analyzing your data. Please check your connection and try again.",
+        text: "ဒေတာတွေကို စစ်ဆေးတဲ့နေရာမှာ အခက်အခဲရှိနေပါတယ်။ အင်တာနက်လိုင်းကို ပြန်စစ်ပြီး ပြန်ကြိုးစားကြည့်ပေးပါ။",
         timestamp: new Date()
       }]);
     } finally {
@@ -185,14 +189,14 @@ export function AIStrategist() {
           </div>
 
           <div className="p-3 bg-slate-50 border-b border-slate-100 flex gap-2 overflow-x-auto no-scrollbar">
-            <button onClick={() => setInput("How are my sales performing?")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs font-semibold text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5">
-              <TrendingUp className="w-3 h-3" /> Sales Analysis
+            <button onClick={() => setInput("အရောင်းစာရင်းတွေကို စစ်ဆေးပေးပါ")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[11px] font-semibold text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5">
+              <TrendingUp className="w-3 h-3" /> အရောင်းစစ်ဆေးရန်
             </button>
-            <button onClick={() => setInput("Suggest content for Facebook/TikTok to sell slow products")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs font-semibold text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5">
-              <Sparkles className="w-3 h-3" /> Content Ideas
+            <button onClick={() => setInput("ရောင်းအားနှေးတဲ့ ပစ္စည်းတွေအတွက် FB/TikTok content အကြံပေးပါ")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[11px] font-semibold text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3" /> Content အကြံဉာဏ်
             </button>
-            <button onClick={() => setInput("Show low stock alerts and what to reorder")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs font-semibold text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5">
-              <AlertCircle className="w-3 h-3" /> Stock Advice
+            <button onClick={() => setInput("ပစ္စည်းလက်ကျန်နည်းနေတာတွေ ရှိလား?")} className="whitespace-nowrap px-3 py-1.5 bg-white border border-slate-200 rounded-full text-[11px] font-semibold text-slate-600 hover:border-pink-300 hover:text-pink-600 transition-all flex items-center gap-1.5">
+              <AlertCircle className="w-3 h-3" /> လက်ကျန်စစ်ရန်
             </button>
           </div>
 
@@ -200,7 +204,13 @@ export function AIStrategist() {
             {messages.map((m, i) => (
               <div key={i} className={cn("flex flex-col max-w-[85%]", m.role === 'user' ? "ml-auto items-end" : "mr-auto items-start")}>
                 <div className={cn("p-3 rounded-2xl text-sm shadow-sm", m.role === 'user' ? "bg-pink-600 text-white rounded-tr-none" : "bg-white border border-slate-200 text-slate-800 rounded-tl-none")}>
-                  {m.text}
+                  {m.role === 'user' ? (
+                    m.text
+                  ) : (
+                    <div className="prose prose-sm prose-pink max-w-none prose-p:leading-relaxed prose-li:my-1 prose-ul:my-2 prose-ol:my-2">
+                       <ReactMarkdown>{m.text}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
                 <span className="text-[10px] text-slate-400 mt-1 px-1">
                   {format(m.timestamp, 'p')}
@@ -212,7 +222,7 @@ export function AIStrategist() {
                 <div className="w-8 h-8 bg-white border border-slate-200 rounded-xl flex items-center justify-center animate-spin">
                   <Loader2 className="w-4 h-4 text-pink-500" />
                 </div>
-                <span className="text-xs font-medium animate-pulse">Analyzing business data...</span>
+                <span className="text-xs font-medium animate-pulse">အချက်အလက်များကို စစ်ဆေးနေပါသည်...</span>
               </div>
             )}
           </div>
@@ -221,7 +231,7 @@ export function AIStrategist() {
             <div className="relative flex items-center gap-2">
               <input
                 type="text"
-                placeholder="Ask for business advice..."
+                placeholder="အကြံဉာဏ် တောင်းဆိုပါ..."
                 className="flex-1 pl-4 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-pink-500 outline-none transition-all text-sm"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -236,7 +246,7 @@ export function AIStrategist() {
               </button>
             </div>
             <p className="text-[10px] text-center text-slate-400 mt-3">
-              AI can make mistakes. Please verify important strategy decisions.
+              AI သည် မှားယွင်းတတ်သဖြင့် အရေးကြီးသော ဆုံးဖြတ်ချက်များကို ပြန်လည်စစ်ဆေးပါ။
             </p>
           </div>
         </motion.div>

@@ -20,6 +20,7 @@ interface Expense {
   category: string;
   amount: number;
   description: string;
+  payTo?: string;
   items: ExpenseItem[];
   voucherImage?: string;
   createdAt?: any;
@@ -41,6 +42,7 @@ export function Expense() {
     category: '',
     amount: 0,
     description: '',
+    payTo: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     items: [{ description: '', qty: 1, unitPrice: 0, total: 0 }] as ExpenseItem[],
     voucherImage: ''
@@ -129,6 +131,7 @@ export function Expense() {
       category: exp.category,
       amount: exp.amount,
       description: exp.description || '',
+      payTo: exp.payTo || '',
       date: exp.date,
       items: exp.items || [{ description: exp.description, qty: 1, unitPrice: exp.amount, total: exp.amount }],
       voucherImage: exp.voucherImage || ''
@@ -143,6 +146,7 @@ export function Expense() {
       category: '', 
       amount: 0, 
       description: '', 
+      payTo: '',
       date: format(new Date(), 'yyyy-MM-dd'),
       items: [{ description: '', qty: 1, unitPrice: 0, total: 0 }],
       voucherImage: ''
@@ -188,19 +192,21 @@ export function Expense() {
   const exportToExcel = () => {
     const data = displayExpenses.flatMap(e => {
       if (e.items && e.items.length > 0) {
-        return e.items.map(item => ({
+        return e.items.map((item, idx) => ({
           'Date': e.date,
           'Category': e.category,
+          'Pay To': e.payTo || '',
           'Description': item.description,
           'Qty': item.qty,
           'Unit Price': item.unitPrice,
           'Total': item.total,
-          'Voucher Note': e.description
+          'Voucher Note': idx === 0 ? e.description : ''
         }));
       }
       return [{
         'Date': e.date,
         'Category': e.category,
+        'Pay To': e.payTo || '',
         'Description': e.description,
         'Qty': 1,
         'Unit Price': e.amount,
@@ -325,6 +331,9 @@ export function Expense() {
               <th onClick={() => requestSort('category')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Category{getSortIcon('category')}</div>
               </th>
+              <th onClick={() => requestSort('payTo')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Pay To{getSortIcon('payTo')}</div>
+              </th>
               <th onClick={() => requestSort('description')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
                 <div className="flex items-center">Description{getSortIcon('description')}</div>
               </th>
@@ -342,6 +351,9 @@ export function Expense() {
                   <span className="px-2 py-1 bg-pink-50 text-pink-700 rounded-lg text-[10px] font-bold uppercase tracking-wider">
                     {expense.category}
                   </span>
+                </td>
+                <td className="px-6 py-4 text-slate-700 text-sm font-medium">
+                  {expense.payTo || '-'}
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
@@ -426,6 +438,17 @@ export function Expense() {
                 </div>
               </div>
 
+              <div className="space-y-1">
+                <label className="text-sm font-semibold text-slate-700">Pay To</label>
+                <input 
+                  type="text" 
+                  placeholder="Employee name, Supplier name, etc."
+                  className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                  value={formData.payTo || ''} 
+                  onChange={e => setFormData({...formData, payTo: e.target.value})} 
+                />
+              </div>
+
               <div className="space-y-4 pt-4">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Voucher Items</h3>
@@ -497,8 +520,8 @@ export function Expense() {
               </div>
 
               <div className="pt-4 border-t border-slate-100">
-                <div className="flex items-center justify-between mb-4">
-                  <span className="text-sm font-bold text-slate-600">Total Voucher Amount</span>
+                <div className="flex items-center justify-between mb-4 bg-pink-50 p-4 rounded-xl border border-pink-100">
+                  <span className="text-sm font-bold text-pink-900 uppercase tracking-wider">Total Voucher Amount</span>
                   <span className="text-xl font-black text-pink-600">{formatMMK(formData.amount)}</span>
                 </div>
                 

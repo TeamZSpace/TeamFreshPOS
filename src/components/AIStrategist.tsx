@@ -107,7 +107,7 @@ export function AIStrategist() {
     setIsLoading(true);
 
     try {
-      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
+      const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
         throw new Error("GEMINI_API_KEY is not configured.");
       }
@@ -115,9 +115,9 @@ export function AIStrategist() {
       const ai = new GoogleGenAI({ apiKey });
       const context = getSystemContext();
       
-      // Filter messages to ensure we start with a user message for current Gemini model requirements
+      // Filter messages to ensure sequence makes sense for Gemini API
       const apiHistory = messages
-        .filter((m, idx) => m.role === 'user' || idx > 0) // Keep model greeting but ensure sequence makes sense
+        .filter((m, idx) => m.role === 'user' || idx > 0)
         .map(m => ({ 
           role: m.role, 
           parts: [{ text: m.text }] 

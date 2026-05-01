@@ -11,6 +11,7 @@ interface ReportEntry {
   date: string;
   category: 'Sales' | 'Expense' | 'Inventory Add' | 'Repurchase';
   amount: number;
+  cogs?: number;
 }
 
 export function FinancialReport() {

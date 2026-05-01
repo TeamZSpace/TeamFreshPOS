@@ -107,7 +107,7 @@ export function AIStrategist() {
     setIsLoading(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
+      const apiKey = typeof process !== 'undefined' ? process.env.GEMINI_API_KEY : undefined;
       if (!apiKey) {
         throw new Error("GEMINI_API_KEY is not configured.");
       }
@@ -115,16 +115,21 @@ export function AIStrategist() {
       const ai = new GoogleGenAI({ apiKey });
       const context = getSystemContext();
       
+      // Filter messages to ensure we start with a user message for current Gemini model requirements
+      const apiHistory = messages
+        .filter((m, idx) => m.role === 'user' || idx > 0) // Keep model greeting but ensure sequence makes sense
+        .map(m => ({ 
+          role: m.role, 
+          parts: [{ text: m.text }] 
+        }));
+
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         config: {
           systemInstruction: context,
         },
         contents: [
-          ...messages.map(m => ({ 
-            role: m.role, 
-            parts: [{ text: m.text }] 
-          })),
+          ...apiHistory,
           { role: 'user', parts: [{ text: userMsgText }] }
         ]
       });
@@ -136,11 +141,15 @@ export function AIStrategist() {
         text: responseText,
         timestamp: new Date()
       }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI Error:', error);
+      const errorMsg = error?.message?.includes("GEMINI_API_KEY") 
+        ? "AI key မရှိပါ။ ကျေးဇူးပြု၍ Settings တွင် check လုပ်ပေးပါ။"
+        : `အမှားတစ်ခု ဖြစ်ပေါ်နေပါတယ်: ${error?.message || "connection error"}. ကျေးဇူးပြု၍ ပြန်ကြိုးစားကြည့်ပေးပါ။`;
+      
       setMessages(prev => [...prev, {
         role: 'model',
-        text: "ဒေတာတွေကို စစ်ဆေးတဲ့နေရာမှာ အခက်အခဲရှိနေပါတယ်။ အင်တာနက်လိုင်းကို ပြန်စစ်ပြီး ပြန်ကြိုးစားကြည့်ပေးပါ။",
+        text: errorMsg,
         timestamp: new Date()
       }]);
     } finally {

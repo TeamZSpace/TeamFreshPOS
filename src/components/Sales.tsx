@@ -88,7 +88,7 @@ export function Sales() {
     orderName: '',
     phone: '',
     paymentMethod: 'Kpay',
-    payment_status: 'Paid' as const,
+    payment_status: 'Paid' as 'Paid' | 'Unpaid' | 'Partial',
     address: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     deliveryDate: format(new Date(), 'yyyy-MM-dd'),

@@ -134,7 +134,7 @@ export function Dashboard() {
   }, 0);
   
   const totalExpenses = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
-  const totalPurchases = purchases.reduce((sum, p) => sum + Number(p.total_amount || p.totalAmount || 0), 0);
+  const totalPurchases = purchases.reduce((sum, p) => sum + Number((p as any).total_amount || p.totalAmount || 0), 0);
   
   const totalCOGS = sales.reduce((sum, sale) => {
     const saleCost = (sale.items || []).reduce((itemSum, item) => {

@@ -19,6 +19,7 @@ import { ProductMaster } from './components/ProductMaster';
 import { Backup } from './components/Backup';
 import { FinancialReport } from './components/FinancialReport';
 import { Partners } from './components/Partners';
+import { AIStrategist } from './components/AIStrategist';
 import { LayoutDashboard, Package, ShoppingCart, TrendingUp, Receipt, Tags, Users, Truck, Settings, BarChart3, ClipboardList, Database, Heart } from 'lucide-react';
 import { collection, query, orderBy, limit, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
 import { handleFirestoreError, OperationType } from './lib/utils';
@@ -172,6 +173,7 @@ export default function App() {
               {renderContent()}
             </div>
             <UndoToast />
+            <AIStrategist />
           </div>
         </main>
       </div>

@@ -22,6 +22,7 @@ interface Product {
   margin: number;
   total_stock: number;
   expiryDate: string;
+  batch_number?: string;
   purchaseDate: string;
 }
 
@@ -90,6 +91,7 @@ export function Inventory() {
     current_selling_price: 0,
     total_stock: 0,
     expiryDate: '',
+    batch_number: '',
     purchaseDate: format(new Date(), 'yyyy-MM-dd'),
   });
 
@@ -173,6 +175,7 @@ export function Inventory() {
       current_selling_price: product.current_selling_price,
       total_stock: product.total_stock,
       expiryDate: product.expiryDate || '',
+      batch_number: product.batch_number || '',
       purchaseDate: product.purchaseDate || format(new Date(), 'yyyy-MM-dd'),
     });
     setIsModalOpen(true);
@@ -194,6 +197,7 @@ export function Inventory() {
       current_selling_price: 0,
       total_stock: 0,
       expiryDate: '',
+      batch_number: '',
       purchaseDate: format(new Date(), 'yyyy-MM-dd'),
     });
   };
@@ -240,6 +244,7 @@ export function Inventory() {
         'Purchase Price': p.average_cost_price,
         'Sales Price': p.current_selling_price,
         'Stock': p.total_stock,
+        'Batch #': p.batch_number || '',
         'Expiry Date': p.expiryDate,
         'Purchase Date': p.purchaseDate
       };
@@ -396,6 +401,7 @@ export function Inventory() {
                   <th onClick={() => requestSort('total_stock')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
                     <div className="flex items-center justify-center">Stock{getSortIcon('total_stock')}</div>
                   </th>
+                  <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Batch #</th>
                   <th onClick={() => requestSort('expiryDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
                     <div className="flex items-center justify-center">Expiry Date{getSortIcon('expiryDate')}</div>
                   </th>
@@ -428,6 +434,9 @@ export function Inventory() {
                         )}>
                           {product.total_stock}
                         </span>
+                      </td>
+                      <td className="px-6 py-4 text-center text-slate-600 font-mono text-[10px]">
+                        {product.batch_number || '-'}
                       </td>
                       <td className="px-6 py-4 text-center text-xs">
                         {product.expiryDate ? (
@@ -589,6 +598,16 @@ export function Inventory() {
                     <option value="">Select Supplier</option>
                     {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                   </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Batch Number</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. B-12345"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                    value={formData.batch_number} 
+                    onChange={(e) => setFormData({ ...formData, batch_number: e.target.value })} 
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Expiry Date (MM/YYYY)</label>

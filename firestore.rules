@@ -153,6 +153,7 @@ service cloud.firestore {
              isValidOptionalString('categoryId', 50) &&
              isValidOptionalString('expiryDate', 10) &&
              isValidOptionalString('productCode', 50) &&
+             isValidOptionalString('batch_number', 50) &&
              isPositive('qty') &&
              isPositive('total_amount') &&
              isPositive('purchase_price') &&

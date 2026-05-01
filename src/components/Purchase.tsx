@@ -18,6 +18,7 @@ interface Purchase {
   current_selling_price: number;
   total_amount: number;
   expiryDate?: string;
+  batch_number?: string;
 }
 
 interface Product {
@@ -82,6 +83,7 @@ export function Purchase() {
     current_selling_price: 0,
     date: format(new Date(), 'yyyy-MM-dd'),
     expiryDate: '',
+    batch_number: '',
     productCode: '',
   });
   const [productSearch, setProductSearch] = useState('');
@@ -190,6 +192,7 @@ export function Purchase() {
             categoryId: formData.categoryId,
             supplierId: formData.supplierId,
             expiryDate: formData.expiryDate,
+            batch_number: formData.batch_number,
             purchaseDate: formData.date
           }, { merge: true });
 
@@ -225,6 +228,7 @@ export function Purchase() {
             categoryId: formData.categoryId,
             supplierId: formData.supplierId,
             expiryDate: formData.expiryDate,
+            batch_number: formData.batch_number,
             purchaseDate: formData.date
           }, { merge: true });
 
@@ -269,6 +273,7 @@ export function Purchase() {
       current_selling_price: p.current_selling_price,
       date: p.date.split('T')[0],
       expiryDate: p.expiryDate || '',
+      batch_number: p.batch_number || '',
       productCode: products.find(prod => prod.id === p.product_id)?.productCode || '',
     });
     setIsModalOpen(true);
@@ -286,6 +291,7 @@ export function Purchase() {
       current_selling_price: 0,
       date: format(new Date(), 'yyyy-MM-dd'),
       expiryDate: '',
+      batch_number: '',
       productCode: '',
     });
   };
@@ -377,6 +383,7 @@ export function Purchase() {
         'Date': p.date,
         'Product': product?.name || '',
         'Supplier': supplier?.name || '',
+        'Batch #': p.batch_number || '',
         'Quantity': p.qty,
         'Unit Cost': p.purchase_price,
         'Total Amount': p.total_amount
@@ -436,6 +443,7 @@ export function Purchase() {
               <th onClick={() => requestSort('purchase_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
                 <div className="flex items-center justify-end">Purchase Price{getSortIcon('purchase_price')}</div>
               </th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Batch #</th>
               <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Expiry</th>
               <th onClick={() => requestSort( 'current_selling_price')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-right cursor-pointer group">
                 <div className="flex items-center justify-end">Sales Price{getSortIcon('current_selling_price')}</div>
@@ -464,6 +472,9 @@ export function Purchase() {
                   <td className="px-6 py-4 text-slate-600 text-xs">{supplier?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-center font-bold text-pink-600">{purchase.qty}</td>
                   <td className="px-6 py-4 text-right text-slate-600">{formatMMK(purchase.purchase_price)}</td>
+                  <td className="px-6 py-4 text-center text-slate-600 font-mono text-[10px]">
+                    {purchase.batch_number || '-'}
+                  </td>
                   <td className="px-6 py-4 text-center">
                     <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-xs font-bold">
                       {purchase.expiryDate || '-'}
@@ -518,6 +529,16 @@ export function Purchase() {
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700">Purchase Date</label>
                   <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={(e) => setFormData({ ...formData, date: e.target.value })} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Batch Number</label>
+                  <input 
+                    type="text" 
+                    placeholder="e.g. B-12345"
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" 
+                    value={formData.batch_number} 
+                    onChange={(e) => setFormData({ ...formData, batch_number: e.target.value })} 
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-sm font-semibold text-slate-700 underline decoration-pink-500 underline-offset-4 decoration-2">Expiry Date (MM/YYYY)</label>

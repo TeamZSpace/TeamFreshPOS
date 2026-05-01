@@ -70,6 +70,7 @@ export function Inventory() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [logs, setLogs] = useState<InventoryLog[]>([]);
   const [view, setView] = useState<'inventory' | 'logs'>('inventory');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'in-stock' | 'out-of-stock' | 'expiring'>('all');
   const [masterProducts, setMasterProducts] = useState<ProductDefinition[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
@@ -226,9 +227,20 @@ export function Inventory() {
     }
   };
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredProducts = products.filter(p => {
+    const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    if (!matchesSearch) return false;
+
+    if (activeFilter === 'in-stock') return p.total_stock > 0;
+    if (activeFilter === 'out-of-stock') return p.total_stock <= 0;
+    if (activeFilter === 'expiring') {
+      if (!p.expiryDate || !p.expiryDate.includes('/')) return false;
+      const [month, year] = p.expiryDate.split('/');
+      const expDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      return expDate.getTime() < new Date().getTime() + 30 * 24 * 60 * 60 * 1000;
+    }
+    return true;
+  });
 
   const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'createdAt', direction: 'desc' });
 
@@ -304,13 +316,19 @@ export function Inventory() {
         <>
           {/* Products Box Summary */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            <div className="bg-pink-50 p-6 rounded-2xl border border-pink-100">
+            <button 
+              onClick={() => setActiveFilter('all')}
+              className={cn(
+                "p-6 rounded-2xl border text-left transition-all",
+                activeFilter === 'all' ? "bg-pink-100 border-pink-300 shadow-inner" : "bg-pink-50 border-pink-100 hover:shadow-md"
+              )}
+            >
               <div className="flex items-center gap-3 mb-2">
                 <Package className="w-5 h-5 text-pink-600" />
                 <h3 className="text-xs font-bold text-pink-900 uppercase tracking-wider">Total Products</h3>
               </div>
               <p className="text-2xl font-black text-pink-900">{products.length}</p>
-            </div>
+            </button>
             <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100">
               <div className="flex items-center gap-3 mb-2">
                 <ArrowUpDown className="w-5 h-5 text-indigo-600" />
@@ -318,21 +336,39 @@ export function Inventory() {
               </div>
               <p className="text-2xl font-black text-indigo-900">{products.reduce((sum, p) => sum + (p.total_stock || 0), 0)}</p>
             </div>
-            <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100">
+            <button 
+              onClick={() => setActiveFilter('in-stock')}
+              className={cn(
+                "p-6 rounded-2xl border text-left transition-all",
+                activeFilter === 'in-stock' ? "bg-emerald-100 border-emerald-300 shadow-inner" : "bg-emerald-50 border-emerald-100 hover:shadow-md"
+              )}
+            >
               <div className="flex items-center gap-3 mb-2">
                 <AlertCircle className="w-5 h-5 text-emerald-600" />
                 <h3 className="text-xs font-bold text-emerald-900 uppercase tracking-wider">In Stock</h3>
               </div>
               <p className="text-2xl font-black text-emerald-900">{products.reduce((sum, p) => sum + (p.total_stock > 0 ? 1 : 0), 0)}</p>
-            </div>
-            <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100">
+            </button>
+            <button 
+              onClick={() => setActiveFilter('out-of-stock')}
+              className={cn(
+                "p-6 rounded-2xl border text-left transition-all",
+                activeFilter === 'out-of-stock' ? "bg-rose-100 border-rose-300 shadow-inner" : "bg-rose-50 border-rose-100 hover:shadow-md"
+              )}
+            >
               <div className="flex items-center gap-3 mb-2">
                 <AlertCircle className="w-5 h-5 text-rose-600" />
                 <h3 className="text-xs font-bold text-rose-900 uppercase tracking-wider">Out of Stock</h3>
               </div>
               <p className="text-2xl font-black text-rose-900">{products.reduce((sum, p) => sum + (p.total_stock <= 0 ? 1 : 0), 0)}</p>
-            </div>
-            <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100">
+            </button>
+            <button 
+              onClick={() => setActiveFilter('expiring')}
+              className={cn(
+                "p-6 rounded-2xl border text-left transition-all",
+                activeFilter === 'expiring' ? "bg-amber-100 border-amber-300 shadow-inner" : "bg-amber-50 border-amber-100 hover:shadow-md"
+              )}
+            >
               <div className="flex items-center gap-3 mb-2">
                 <Calendar className="w-5 h-5 text-amber-600" />
                 <h3 className="text-xs font-bold text-amber-900 uppercase tracking-wider">Expiring</h3>
@@ -345,7 +381,7 @@ export function Inventory() {
                   return expDate.getTime() < new Date().getTime() + 30 * 24 * 60 * 60 * 1000;
                 }).length}
               </p>
-            </div>
+            </button>
             <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800">
               <div className="flex items-center gap-3 mb-2 text-slate-400">
                 <FileSpreadsheet className="w-5 h-5" />
@@ -358,15 +394,31 @@ export function Inventory() {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Search products..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+            <div className="flex items-center gap-4 flex-1 max-w-2xl">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search products..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+              {activeFilter !== 'all' && (
+                <div className="flex items-center gap-2 bg-pink-50 px-3 py-1.5 rounded-lg border border-pink-100 animate-in slide-in-from-left duration-300">
+                  <Filter className="w-4 h-4 text-pink-600" />
+                  <span className="text-xs font-bold text-pink-900 uppercase">
+                    Filter: {activeFilter.replace('-', ' ')}
+                  </span>
+                  <button 
+                    onClick={() => setActiveFilter('all')}
+                    className="ml-1 p-0.5 hover:bg-pink-200 rounded text-pink-600 transition-colors"
+                  >
+                    <Plus className="w-4 h-4 rotate-45" />
+                  </button>
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -420,7 +472,7 @@ export function Inventory() {
 
                   return (
                     <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="px-6 py-4 text-slate-500 font-mono text-xs">{displayCode}</td>
+                      <td className="px-6 py-4 text-slate-900 font-mono text-xs">{displayCode}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
                       <td className="px-6 py-4 font-medium text-slate-900">{product.name}</td>
                       <td className="px-6 py-4 text-slate-600 text-xs">

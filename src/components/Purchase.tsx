@@ -467,7 +467,7 @@ export function Purchase() {
                   <td className="px-6 py-4 text-slate-600 text-xs">
                     {format(new Date(purchase.date), 'MMM d, yyyy')}
                   </td>
-                  <td className="px-6 py-4 text-slate-600 text-xs font-mono">{displayCode}</td>
+                  <td className="px-6 py-4 text-slate-900 text-xs font-mono">{displayCode}</td>
                   <td className="px-6 py-4 font-medium text-slate-900">{product?.name || 'Unknown'}</td>
                   <td className="px-6 py-4 text-slate-600 text-xs">{category?.name || '-'}</td>
                   <td className="px-6 py-4 text-slate-600 text-xs">{supplier?.name || 'Unknown'}</td>

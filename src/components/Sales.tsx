@@ -254,7 +254,7 @@ Thank you for your order!
       const net_amount = gross_amount + tax_amount + deliveryFees;
       const totalAmount = net_amount;
       
-      const pointsToAdd = Math.floor(subtotal / 100000) * 30;
+      const pointsToAdd = Math.floor(subtotal / 4000);
       const orderNumber = editingSale ? editingSale.order_no : await generateOrderNumber(formData.date);
       const englishPhone = myanmarToEnglishNumerals(formData.phone || '');
 
@@ -315,7 +315,7 @@ Thank you for your order!
           if (oldCustomerDoc?.exists()) {
             const oldData = oldCustomerDoc.data();
             const oldSubtotal = editingSale.subtotal || editingSale.total_amount;
-            const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
+            const oldPoints = Math.floor(oldSubtotal / 4000);
             transaction.update(doc(db, 'customers', editingSale.customer_id), {
               points: Math.max(0, (oldData.points || 0) - oldPoints),
               orderCount: Math.max(0, (oldData.orderCount || 0) - 1)
@@ -359,7 +359,7 @@ Thank you for your order!
 
             if (editingSale) {
               const oldSubtotal = editingSale.subtotal || editingSale.total_amount;
-              const oldPoints = Math.floor(oldSubtotal / 100000) * 30;
+              const oldPoints = Math.floor(oldSubtotal / 4000);
               finalPoints = Math.max(0, currentPoints - oldPoints + pointsToAdd);
             } else {
               finalOrderCount = currentOrderCount + 1;
@@ -577,7 +577,7 @@ Thank you for your order!
 
         if (cDoc?.exists()) {
           const subtotal = sale.subtotal || sale.total_amount;
-          const pointsToSubtract = Math.floor(subtotal / 100000) * 30;
+          const pointsToSubtract = Math.floor(subtotal / 4000);
           const currentData = cDoc.data();
           const currentPoints = currentData.points || 0;
           const currentOrderCount = currentData.orderCount || 0;
@@ -643,7 +643,7 @@ Thank you for your order!
 
             if (cDoc?.exists()) {
               const subtotal = sale.subtotal || sale.total_amount;
-              const pointsToAdd = Math.floor(subtotal / 100000) * 30;
+              const pointsToAdd = Math.floor(subtotal / 4000);
               const currentData = cDoc.data();
               transaction.update(cDoc.ref, { 
                 points: (currentData.points || 0) + pointsToAdd,
@@ -707,25 +707,29 @@ Thank you for your order!
   })))).filter(Boolean).sort();
 
   const exportToExcel = () => {
-    const data = sortedSales.map(s => ({
-      'Order #': s.order_no,
-      'Date': s.date,
-      'Customer': s.customerName,
-      'Phone': s.phone || customers.find(c => c.id === s.customer_id)?.phone || '',
-      'Product Code': s.items.map(i => {
-        const product = products.find(p => p.id === i.product_id);
-        const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
-        return `${i.qty}x ${product?.productCode || master?.productCode || 'N/A'}`;
-      }).join(', '),
-      'Payment': s.paymentMethod,
-      'Status': s.payment_status,
-      'Gross Amount': s.gross_amount || s.subtotal,
-      'Tax': s.tax_amount || 0,
-      'Delivery': s.deliveryFees,
-      'Net Total': s.net_amount || s.total_amount,
-      'Address': s.address,
-      'Note': s.note || ''
-    }));
+    const data = sortedSales.map(s => {
+      const customer = customers.find(c => c.id === s.customer_id);
+      return {
+        'Order #': s.order_no,
+        'Date': s.date,
+        'Customer': s.customerName,
+        'Facebook Name': customer?.facebookName || '',
+        'Phone': s.phone || customer?.phone || '',
+        'Product Code': s.items.map(i => {
+          const product = products.find(p => p.id === i.product_id);
+          const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
+          return `${i.qty}x ${product?.productCode || master?.productCode || 'N/A'}`;
+        }).join(', '),
+        'Payment': s.paymentMethod,
+        'Status': s.payment_status,
+        'Gross Amount': s.gross_amount || s.subtotal,
+        'Tax': s.tax_amount || 0,
+        'Delivery': s.deliveryFees,
+        'Net Total': s.net_amount || s.total_amount,
+        'Address': s.address,
+        'Note': s.note || ''
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -741,15 +745,22 @@ Thank you for your order!
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search orders or customers..."
-            className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex items-center gap-6">
+          <div className="relative flex-1 max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search orders or customers..."
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none transition-all"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="bg-pink-50 px-4 py-2 rounded-xl border border-pink-100 flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-pink-600" />
+            <span className="text-xs font-bold text-pink-900 uppercase">Total Orders:</span>
+            <span className="text-sm font-black text-pink-600">{filteredSales.length}</span>
+          </div>
         </div>
         <div className="flex items-center gap-3">
           <button
@@ -904,7 +915,7 @@ Thank you for your order!
                       const master = masterProducts.find(m => m.name.toLowerCase() === item.name.toLowerCase());
                       const code = product?.productCode || master?.productCode || 'N/A';
                       return (
-                        <span key={i} className="px-2 py-0.5 bg-pink-50 text-pink-700 rounded text-[10px] font-bold border border-pink-100">
+                        <span key={i} className="px-2 py-0.5 bg-slate-50 text-slate-900 rounded text-[10px] font-bold border border-slate-200">
                           {item.qty}x {code}
                         </span>
                       );

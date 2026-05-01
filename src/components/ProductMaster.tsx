@@ -252,7 +252,7 @@ export function ProductMaster() {
                 <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
                   <td className="px-6 py-4 font-medium text-slate-900">{product.brand || '-'}</td>
                   <td className="px-6 py-4 text-slate-700">{product.name}</td>
-                  <td className="px-6 py-4 text-slate-500 font-mono text-sm">{product.productCode}</td>
+                  <td className="px-6 py-4 text-slate-900 font-mono text-sm">{product.productCode}</td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 

@@ -35,7 +35,7 @@ export function Expense() {
     date: format(new Date(), 'yyyy-MM-dd'),
   });
 
-  const categories = ['Rent', 'Utilities', 'Salaries', 'Marketing', 'Shipping', 'Packaging', 'Software', 'Other'];
+  const categories = ['Rent', 'Utilities', 'Salaries', 'Marketing', 'Shipping', 'Packaging', 'Software', 'Delivery Charges', 'Other'];
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'expenses'), (snapshot) => {

@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, updateDoc, doc, deleteDoc, serverTimestamp, addDoc } from 'firebase/firestore';
 import { Users, Search, Phone, MapPin, Calendar, Facebook, User, Award, Trash2, Edit2, Plus, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, Filter, ShoppingBag, FileSpreadsheet } from 'lucide-react';
-import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
+import { handleFirestoreError, OperationType, myanmarToEnglishNumerals, useSortableData, formatMMK } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 import * as XLSX from 'xlsx';
+import { getDocs, where } from 'firebase/firestore';
 
 interface Customer {
   id: string;
@@ -25,6 +26,11 @@ export function CRM() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [historyModal, setHistoryModal] = useState<{ isOpen: boolean; customer: Customer | null }>({
+    isOpen: false,
+    customer: null
+  });
+  const [customerSales, setCustomerSales] = useState<any[]>([]);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; id: string | null; name: string }>({
     isOpen: false,
@@ -44,8 +50,21 @@ export function CRM() {
     const unsub = onSnapshot(query(collection(db, 'customers'), orderBy('lastOrderDate', 'desc')), (snapshot) => {
       setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'customers'));
+
     return () => unsub();
   }, []);
+
+  const fetchCustomerHistory = async (customer: Customer) => {
+    try {
+      const q = query(collection(db, 'sales'), where('customer_id', '==', customer.id), orderBy('date', 'desc'));
+      const snapshot = await getDocs(q);
+      const salesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setCustomerSales(salesData);
+      setHistoryModal({ isOpen: true, customer });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.LIST, 'sales');
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -185,82 +204,141 @@ export function CRM() {
       </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {sortedCustomers.map((customer) => (
-          <div key={customer.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group relative">
-            <div className="absolute top-4 right-4 flex gap-1">
+      <div className="overflow-x-auto border border-slate-200 rounded-xl shadow-sm">
+        <table className="w-full text-left border-collapse bg-white">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-200">
+              <th onClick={() => requestSort('facebookName')} className="px-6 py-4 text-sm font-semibold text-slate-600 cursor-pointer group">
+                <div className="flex items-center">Customer{getSortIcon('facebookName')}</div>
+              </th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600">Phone</th>
+              <th onClick={() => requestSort('orderCount')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Orders{getSortIcon('orderCount')}</div>
+              </th>
+              <th onClick={() => requestSort('points')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Points{getSortIcon('points')}</div>
+              </th>
+              <th onClick={() => requestSort('lastOrderDate')} className="px-6 py-4 text-sm font-semibold text-slate-600 text-center cursor-pointer group">
+                <div className="flex items-center justify-center">Last Order{getSortIcon('lastOrderDate')}</div>
+              </th>
+              <th className="px-6 py-4 text-sm font-semibold text-slate-600 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {sortedCustomers.map((customer) => (
+              <tr key={customer.id} className="hover:bg-slate-50 transition-colors group">
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-pink-50 rounded-lg flex items-center justify-center">
+                      <User className="w-4 h-4 text-pink-600" />
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-slate-900 flex items-center gap-1">
+                        {customer.facebookName}
+                        <Facebook className="w-3 h-3 text-pink-500" />
+                      </span>
+                      <span className="text-[10px] text-slate-500">{customer.orderName || '-'}</span>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-6 py-4 text-slate-600 text-xs font-mono">
+                  {customer.phone || '-'}
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className="px-2 py-1 bg-pink-50 text-pink-700 rounded-lg text-[10px] font-bold">
+                    {customer.orderCount || 0}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-center">
+                  <span className="px-2 py-1 bg-amber-50 text-amber-700 rounded-lg text-[10px] font-bold">
+                    {customer.points || 0}
+                  </span>
+                </td>
+                <td className="px-6 py-4 text-center text-slate-500 text-xs">
+                  {customer.lastOrderDate ? format(new Date(customer.lastOrderDate), 'MMM d, yyyy') : '-'}
+                </td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center justify-center gap-2">
+                    <button 
+                      onClick={() => fetchCustomerHistory(customer)}
+                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all flex items-center gap-1"
+                      title="View History"
+                    >
+                      <ShoppingBag className="w-4 h-4" />
+                      <span className="text-[10px] font-bold">History</span>
+                    </button>
+                    <button 
+                      onClick={() => openEditModal(customer)}
+                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
+                      title="Edit Customer"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button 
+                      onClick={() => setDeleteConfirm({ isOpen: true, id: customer.id, name: customer.facebookName })}
+                      className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                      title="Delete Customer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {historyModal.isOpen && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col animate-in fade-in zoom-in duration-200">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <ShoppingBag className="w-6 h-6" />
+                History: {historyModal.customer?.facebookName}
+              </h2>
               <button 
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditModal(customer);
-                }} 
-                className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
-                title="Edit Customer"
+                onClick={() => setHistoryModal({ isOpen: false, customer: null })}
+                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
               >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button 
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setDeleteConfirm({ isOpen: true, id: customer.id, name: customer.facebookName });
-                }} 
-                className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors bg-white/80 backdrop-blur-sm shadow-sm border border-slate-100"
-                title="Delete Customer"
-              >
-                <Trash2 className="w-4 h-4" />
+                <Plus className="w-6 h-6 rotate-45" />
               </button>
             </div>
-
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 bg-pink-50 rounded-2xl flex items-center justify-center">
-                  <User className="w-6 h-6 text-pink-600" />
+            <div className="p-6 overflow-y-auto">
+              {customerSales.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <ShoppingBag className="w-12 h-12 mx-auto mb-4 opacity-10" />
+                  <p>No purchase history found for this customer.</p>
                 </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 flex items-center gap-2">
-                    {customer.facebookName}
-                    <Facebook className="w-3 h-3 text-pink-500" />
-                  </h3>
-                  <p className="text-xs text-slate-500">Order Name: {customer.orderName || '-'}</p>
+              ) : (
+                <div className="space-y-4">
+                  {customerSales.map((sale) => (
+                    <div key={sale.id} className="border border-slate-100 rounded-xl p-4 hover:border-pink-200 transition-colors">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <span className="text-[10px] font-black text-pink-600 uppercase tracking-wider">Order #{sale.order_no}</span>
+                          <h4 className="font-bold text-slate-900">{format(new Date(sale.date), 'MMMM d, yyyy')}</h4>
+                        </div>
+                        <div className="text-right">
+                          <span className="text-lg font-black text-slate-900">{formatMMK(sale.total_amount)}</span>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold">{sale.paymentMethod} • {sale.payment_status}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {sale.items?.map((item: any, idx: number) => (
+                          <span key={idx} className="px-2 py-1 bg-slate-50 border border-slate-100 rounded text-[10px] font-medium text-slate-600">
+                            {item.qty}x {item.name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm text-slate-600">
-                <Phone className="w-4 h-4 text-slate-400" />
-                {customer.phone || 'No phone recorded'}
-              </div>
-              <div className="flex items-start gap-3 text-sm text-slate-600">
-                <MapPin className="w-4 h-4 text-slate-400 mt-0.5" />
-                <span className="line-clamp-2">{customer.address || 'No address recorded'}</span>
-              </div>
-              <div className="flex items-center gap-3 text-sm text-slate-600">
-                <Calendar className="w-4 h-4 text-slate-400" />
-                Last Order: {customer.lastOrderDate ? format(new Date(customer.lastOrderDate), 'MMM d, yyyy') : 'Never'}
-              </div>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-slate-50 flex items-center justify-between">
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full border border-amber-100 w-fit">
-                  <Award className="w-4 h-4" />
-                  <span className="text-xs font-black">{customer.points || 0} Points</span>
-                </div>
-                <div className="flex items-center gap-2 px-3 py-1 bg-pink-50 text-pink-700 rounded-full border border-pink-100 w-fit">
-                  <ShoppingBag className="w-4 h-4" />
-                  <span className="text-xs font-black">{customer.orderCount || 0} Orders</span>
-                </div>
-              </div>
-              <button className="text-xs font-bold text-pink-600 hover:text-pink-800 transition-colors">
-                View History →
-              </button>
+              )}
             </div>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">

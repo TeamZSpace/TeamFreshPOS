@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, serverTimestamp, deleteDoc, doc, updateDoc } from 'firebase/firestore';
-import { Plus, Receipt, Trash2, Calendar, DollarSign, Tag, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
+import { Plus, Receipt, Trash2, Calendar, DollarSign, Tag, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, Camera, Image as ImageIcon, X } from 'lucide-react';
 import { handleFirestoreError, OperationType, formatMMK, useSortableData, cn } from '../lib/utils';
 import { format, isSameMonth, eachMonthOfInterval, subMonths } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 import * as XLSX from 'xlsx';
+
+interface ExpenseItem {
+  description: string;
+  qty: number;
+  unitPrice: number;
+  total: number;
+}
 
 interface Expense {
   id: string;
@@ -13,6 +20,8 @@ interface Expense {
   category: string;
   amount: number;
   description: string;
+  items: ExpenseItem[];
+  voucherImage?: string;
   createdAt?: any;
 }
 
@@ -33,9 +42,59 @@ export function Expense() {
     amount: 0,
     description: '',
     date: format(new Date(), 'yyyy-MM-dd'),
+    items: [{ description: '', qty: 1, unitPrice: 0, total: 0 }] as ExpenseItem[],
+    voucherImage: ''
   });
 
   const categories = ['Rent', 'Utilities', 'Salaries', 'Marketing', 'Shipping', 'Packaging', 'Software', 'Delivery Charges', 'Other'];
+
+  const addItem = () => {
+    setFormData({
+      ...formData,
+      items: [...formData.items, { description: '', qty: 1, unitPrice: 0, total: 0 }]
+    });
+  };
+
+  const removeItem = (index: number) => {
+    if (formData.items.length === 1) return;
+    const newItems = formData.items.filter((_, i) => i !== index);
+    const newTotal = newItems.reduce((sum, item) => sum + item.total, 0);
+    setFormData({ ...formData, items: newItems, amount: newTotal });
+  };
+
+  const updateItem = (index: number, field: keyof ExpenseItem, value: any) => {
+    const newItems = [...formData.items];
+    const item = { ...newItems[index], [field]: value };
+    
+    if (field === 'qty' || field === 'unitPrice') {
+      const qty = field === 'qty' ? parseFloat(value) || 0 : item.qty;
+      const unitPrice = field === 'unitPrice' ? parseFloat(value) || 0 : item.unitPrice;
+      item.total = qty * unitPrice;
+    }
+
+    newItems[index] = item;
+    const newTotal = newItems.reduce((sum, item) => sum + item.total, 0);
+    setFormData({ ...formData, items: newItems, amount: newTotal });
+  };
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1024 * 1024) { // 1MB limit for Firestore doc safety
+        alert('Image size is too large. Please select an image smaller than 1MB.');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFormData(prev => ({ ...prev, voucherImage: reader.result as string }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setFormData(prev => ({ ...prev, voucherImage: '' }));
+  };
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'expenses'), (snapshot) => {
@@ -69,8 +128,10 @@ export function Expense() {
     setFormData({
       category: exp.category,
       amount: exp.amount,
-      description: exp.description,
+      description: exp.description || '',
       date: exp.date,
+      items: exp.items || [{ description: exp.description, qty: 1, unitPrice: exp.amount, total: exp.amount }],
+      voucherImage: exp.voucherImage || ''
     });
     setIsModalOpen(true);
   };
@@ -78,7 +139,14 @@ export function Expense() {
   const closeModal = () => {
     setIsModalOpen(false);
     setEditingExpense(null);
-    setFormData({ category: '', amount: 0, description: '', date: format(new Date(), 'yyyy-MM-dd') });
+    setFormData({ 
+      category: '', 
+      amount: 0, 
+      description: '', 
+      date: format(new Date(), 'yyyy-MM-dd'),
+      items: [{ description: '', qty: 1, unitPrice: 0, total: 0 }],
+      voucherImage: ''
+    });
   };
 
   const handleDelete = async (id: string) => {
@@ -118,12 +186,28 @@ export function Expense() {
   const displayExpenses = showAllTime ? sortedExpenses : sortedExpenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
 
   const exportToExcel = () => {
-    const data = displayExpenses.map(e => ({
-      'Date': e.date,
-      'Category': e.category,
-      'Amount': e.amount,
-      'Description': e.description
-    }));
+    const data = displayExpenses.flatMap(e => {
+      if (e.items && e.items.length > 0) {
+        return e.items.map(item => ({
+          'Date': e.date,
+          'Category': e.category,
+          'Description': item.description,
+          'Qty': item.qty,
+          'Unit Price': item.unitPrice,
+          'Total': item.total,
+          'Voucher Note': e.description
+        }));
+      }
+      return [{
+        'Date': e.date,
+        'Category': e.category,
+        'Description': e.description,
+        'Qty': 1,
+        'Unit Price': e.amount,
+        'Total': e.amount,
+        'Voucher Note': ''
+      }];
+    });
 
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
@@ -259,7 +343,32 @@ export function Expense() {
                     {expense.category}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-slate-900 text-sm">{expense.description}</td>
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-3">
+                    {expense.voucherImage && (
+                      <div className="relative group/img cursor-pointer" onClick={() => openEditModal(expense)}>
+                        <img 
+                          src={expense.voucherImage} 
+                          alt="Voucher" 
+                          className="w-10 h-10 rounded-lg object-cover border border-slate-200" 
+                        />
+                        <div className="absolute inset-0 bg-black/40 rounded-lg opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
+                          <ImageIcon className="w-4 h-4 text-white" />
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <p className="text-slate-900 text-sm font-medium">{expense.description}</p>
+                      <div className="flex flex-wrap gap-1">
+                        {expense.items?.map((item, idx) => (
+                          <span key={idx} className="text-[10px] text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                            {item.qty}x {item.description}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </td>
                 <td className="px-6 py-4 text-right font-bold text-slate-900">{formatMMK(expense.amount)}</td>
                 <td className="px-6 py-4 text-center">
                   <div className="flex items-center justify-center gap-1">
@@ -295,32 +404,142 @@ export function Expense() {
 
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-pink-600 text-white">
               <h2 className="text-xl font-bold">{editingExpense ? 'Edit Expense' : 'Add Expense'}</h2>
               <button onClick={closeModal} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
                 <Plus className="w-6 h-6 rotate-45" />
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Date</label>
-                <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+            <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Date</label>
+                  <input required type="date" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.date || ''} onChange={e => setFormData({...formData, date: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Category</label>
+                  <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
+                    <option value="">Select Category</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Category</label>
-                <select required className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})}>
-                  <option value="">Select Category</option>
-                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
+
+              <div className="space-y-4 pt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">Voucher Items</h3>
+                  <button 
+                    type="button" 
+                    onClick={addItem}
+                    className="flex items-center gap-1.5 px-3 py-1 bg-pink-50 text-pink-600 rounded-lg text-xs font-bold hover:bg-pink-100 transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Item
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {formData.items.map((item, index) => (
+                    <div key={index} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 relative group">
+                      {formData.items.length > 1 && (
+                        <button 
+                          type="button" 
+                          onClick={() => removeItem(index)}
+                          className="absolute -top-2 -right-2 p-1.5 bg-rose-100 text-rose-600 rounded-full hover:bg-rose-200 transition-colors shadow-sm opacity-0 group-hover:opacity-100"
+                        >
+                          <Plus className="w-3 h-3 rotate-45" />
+                        </button>
+                      )}
+                      
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase">Item Description</label>
+                        <input 
+                          required 
+                          placeholder="What did you buy?"
+                          className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" 
+                          value={item.description} 
+                          onChange={e => updateItem(index, 'description', e.target.value)} 
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Qty</label>
+                          <input 
+                            required 
+                            type="number" 
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" 
+                            value={item.qty} 
+                            onChange={e => updateItem(index, 'qty', e.target.value)} 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Unit Price</label>
+                          <input 
+                            required 
+                            type="number" 
+                            className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-pink-500 outline-none" 
+                            value={item.unitPrice} 
+                            onChange={e => updateItem(index, 'unitPrice', e.target.value)} 
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">Total</label>
+                          <div className="w-full px-3 py-1.5 bg-slate-100 border border-slate-200 rounded-lg text-sm font-bold text-slate-700">
+                            {formatMMK(item.total)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Amount (MMK)</label>
-                <input required type="number" className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none" value={formData.amount || 0} onChange={e => setFormData({...formData, amount: parseFloat(e.target.value) || 0})} />
-              </div>
-              <div className="space-y-1">
-                <label className="text-sm font-semibold text-slate-700">Description</label>
-                <textarea rows={3} className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} />
+
+              <div className="pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <span className="text-sm font-bold text-slate-600">Total Voucher Amount</span>
+                  <span className="text-xl font-black text-pink-600">{formatMMK(formData.amount)}</span>
+                </div>
+                
+                <div className="space-y-1">
+                  <label className="text-sm font-semibold text-slate-700">Voucher Remarks (Optional)</label>
+                  <textarea 
+                    rows={2} 
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none resize-none" 
+                    value={formData.description || ''} 
+                    onChange={e => setFormData({...formData, description: e.target.value})} 
+                  />
+                </div>
+
+                <div className="space-y-3 pt-2">
+                  <label className="text-sm font-bold text-slate-800 uppercase tracking-widest block">Attach Voucher Photo</label>
+                  {!formData.voucherImage ? (
+                    <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:bg-slate-50 hover:border-pink-300 transition-all group">
+                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                        <Camera className="w-8 h-8 text-slate-400 group-hover:text-pink-500 mb-2 transition-colors" />
+                        <p className="text-xs text-slate-500 group-hover:text-pink-600 font-medium">Click to upload or take a photo</p>
+                        <p className="text-[10px] text-slate-400 mt-1">PNG, JPG up to 1MB</p>
+                      </div>
+                      <input type="file" className="hidden" accept="image/*" onChange={handleImageUpload} />
+                    </label>
+                  ) : (
+                    <div className="relative group">
+                      <img 
+                        src={formData.voucherImage} 
+                        alt="Voucher Preview" 
+                        className="w-full h-48 object-cover rounded-2xl border border-slate-200 shadow-sm"
+                      />
+                      <button 
+                        type="button"
+                        onClick={removeImage}
+                        className="absolute top-2 right-2 p-1.5 bg-rose-500 text-white rounded-full shadow-lg hover:bg-rose-600 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="flex gap-3 pt-4">
                 <button type="button" onClick={closeModal} className="flex-1 px-4 py-2 text-slate-600 font-semibold hover:bg-slate-50 rounded-xl transition-colors">Cancel</button>

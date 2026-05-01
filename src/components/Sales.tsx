@@ -83,19 +83,32 @@ export function Sales() {
     sale: null
   });
   
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    facebookName: string;
+    orderName: string;
+    phone: string;
+    paymentMethod: string;
+    payment_status: 'Paid' | 'Unpaid' | 'Partial';
+    address: string;
+    date: string;
+    deliveryDate: string;
+    deliveryFees: number;
+    tax_amount: number;
+    note: string;
+    items: { product_id: string; name: string; qty: number; sold_price_snapshot: number; cost_price_snapshot: number }[];
+  }>({
     facebookName: '',
     orderName: '',
     phone: '',
     paymentMethod: 'Kpay',
-    payment_status: 'Paid' as 'Paid' | 'Unpaid' | 'Partial',
+    payment_status: 'Paid',
     address: '',
     date: format(new Date(), 'yyyy-MM-dd'),
     deliveryDate: format(new Date(), 'yyyy-MM-dd'),
     deliveryFees: 0,
     tax_amount: 0,
     note: '',
-    items: [] as { product_id: string; name: string; qty: number; sold_price_snapshot: number; cost_price_snapshot: number }[],
+    items: [],
   });
   const [productSearch, setProductSearch] = useState('');
   const [columnFilters, setColumnFilters] = useState({

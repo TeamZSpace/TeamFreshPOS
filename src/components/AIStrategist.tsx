@@ -95,21 +95,21 @@ export function AIStrategist() {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMsgText = input;
-    const userMessage: Message = {
+    const userMsgText = input.trim();
+    setInput('');
+    
+    setMessages(prev => [...prev, {
       role: 'user',
       text: userMsgText,
       timestamp: new Date()
-    };
-    
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
+    }]);
+
     setIsLoading(true);
 
     try {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
-        throw new Error("GEMINI_API_KEY is not configured.");
+        throw new Error("AI key မရှိပါ။ ကျေးဇူးပြု၍ Settings တွင် check လုပ်ပေးပါ။");
       }
       
       const ai = new GoogleGenAI({ apiKey });
@@ -143,8 +143,8 @@ export function AIStrategist() {
       }]);
     } catch (error: any) {
       console.error('AI Error:', error);
-      const errorMsg = error?.message?.includes("GEMINI_API_KEY") 
-        ? "AI key မရှိပါ။ ကျေးဇူးပြု၍ Settings တွင် check လုပ်ပေးပါ။"
+      const errorMsg = error?.message?.includes("AI key") 
+        ? error.message
         : `အမှားတစ်ခု ဖြစ်ပေါ်နေပါတယ်: ${error?.message || "connection error"}. ကျေးဇူးပြု၍ ပြန်ကြိုးစားကြည့်ပေးပါ။`;
       
       setMessages(prev => [...prev, {

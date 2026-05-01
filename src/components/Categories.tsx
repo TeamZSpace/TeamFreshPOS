@@ -11,6 +11,7 @@ interface Category {
   id: string;
   name: string;
   parent: string | null;
+  createdAt?: any;
 }
 
 import { notifyUndo } from '../lib/notifications';
@@ -96,7 +97,7 @@ export function Categories() {
     }
   };
 
-  const { items: sortedCategories, requestSort, sortConfig } = useSortableData(categories, { key: 'name', direction: 'asc' });
+  const { items: sortedCategories, requestSort, sortConfig } = useSortableData(categories, { key: 'createdAt', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedCategories.map(c => {

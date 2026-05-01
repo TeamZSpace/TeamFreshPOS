@@ -16,6 +16,7 @@ interface Customer {
   lastOrderDate: string;
   points: number;
   orderCount?: number;
+  createdAt?: any;
 }
 
 import { notifyUndo } from '../lib/notifications';
@@ -111,7 +112,7 @@ export function CRM() {
     c.phone?.includes(searchTerm)
   );
 
-  const { items: sortedCustomers, requestSort, sortConfig } = useSortableData(filteredCustomers, { key: 'lastOrderDate', direction: 'desc' });
+  const { items: sortedCustomers, requestSort, sortConfig } = useSortableData(filteredCustomers, { key: 'createdAt', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedCustomers.map(c => ({

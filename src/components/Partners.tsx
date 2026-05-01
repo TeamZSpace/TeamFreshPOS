@@ -35,7 +35,7 @@ export function Partners() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'partners'), orderBy('share', 'desc'));
+    const q = query(collection(db, 'partners'), orderBy('joinedAt', 'desc'));
     const unsubscribe = onSnapshot(q, 
       (snapshot) => {
         const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Partner));

@@ -162,7 +162,7 @@ export function ProductMaster() {
     (p.brand && p.brand.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'name', direction: 'asc' });
+  const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'createdAt', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedProducts.map(p => ({

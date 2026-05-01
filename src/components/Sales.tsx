@@ -27,6 +27,7 @@ interface Sale {
   total_amount: number;
   profit?: number;
   note?: string;
+  createdAt?: any;
 }
 
 interface Product {
@@ -692,7 +693,7 @@ Thank you for your order!
     );
   });
 
-  const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'date', direction: 'desc' });
+  const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'createdAt', direction: 'desc' });
 
   // Get unique values for dropdowns
   const uniqueOrderNos = Array.from(new Set(sales.map(s => s.order_no))).filter(Boolean).sort();

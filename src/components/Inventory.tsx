@@ -24,6 +24,7 @@ interface Product {
   expiryDate: string;
   batch_number?: string;
   purchaseDate: string;
+  createdAt?: any;
 }
 
 interface ProductDefinition {
@@ -229,7 +230,7 @@ export function Inventory() {
     p.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'name', direction: 'asc' });
+  const { items: sortedProducts, requestSort, sortConfig } = useSortableData(filteredProducts, { key: 'createdAt', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedProducts.map(p => {

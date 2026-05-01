@@ -13,6 +13,7 @@ interface Expense {
   category: string;
   amount: number;
   description: string;
+  createdAt?: any;
 }
 
 import { notifyUndo } from '../lib/notifications';
@@ -103,7 +104,7 @@ export function Expense() {
     }
   };
 
-  const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses, { key: 'date', direction: 'desc' });
+  const { items: sortedExpenses, requestSort, sortConfig } = useSortableData(expenses, { key: 'createdAt', direction: 'desc' });
 
   const monthlyExpenses = expenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
   const currentMonthTotal = monthlyExpenses.reduce((sum, e) => sum + e.amount, 0);

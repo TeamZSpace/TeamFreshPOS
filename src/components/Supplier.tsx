@@ -14,6 +14,7 @@ interface Supplier {
   phone: string;
   email: string;
   address: string;
+  createdAt?: any;
 }
 
 import { notifyUndo } from '../lib/notifications';
@@ -106,7 +107,7 @@ export function Supplier() {
     }
   };
 
-  const { items: sortedSuppliers, requestSort, sortConfig } = useSortableData(suppliers, { key: 'name', direction: 'asc' });
+  const { items: sortedSuppliers, requestSort, sortConfig } = useSortableData(suppliers, { key: 'createdAt', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedSuppliers.map(s => ({

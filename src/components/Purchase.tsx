@@ -19,6 +19,7 @@ interface Purchase {
   total_amount: number;
   expiryDate?: string;
   batch_number?: string;
+  createdAt?: any;
 }
 
 interface Product {
@@ -373,7 +374,7 @@ export function Purchase() {
     }
   };
 
-  const { items: sortedPurchases, requestSort, sortConfig } = useSortableData(purchases, { key: 'date', direction: 'desc' });
+  const { items: sortedPurchases, requestSort, sortConfig } = useSortableData(purchases, { key: 'createdAt', direction: 'desc' });
 
   const exportToExcel = () => {
     const data = sortedPurchases.map(p => {

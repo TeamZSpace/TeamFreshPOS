@@ -189,6 +189,7 @@
     "/settings": { "schema": "Settings", "description": "App settings" },
     "/productMaster": { "schema": "ProductMaster", "description": "Master product list" },
     "/backups": { "schema": "Backup", "description": "Database backups" },
-    "/partners": { "schema": "Partner", "description": "Business partners" }
+    "/partners": { "schema": "Partner", "description": "Business partners" },
+    "/deleted_sales": { "schema": "Sale", "description": "Deleted sales history" }
   }
 }

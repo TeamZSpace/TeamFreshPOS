@@ -75,11 +75,12 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
+      return isAuthenticated() && (
+        (request.auth.token.email == "diginestt2026@gmail.com" && request.auth.token.email_verified == true) ||
+        (request.auth.token.email == "myatbinance@gmail.com" && request.auth.token.email_verified == true) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          (request.auth.token.email == "diginestt2026@gmail.com" && request.auth.token.email_verified == true) ||
-          (request.auth.token.email == "myatbinance@gmail.com" && request.auth.token.email_verified == true));
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
     function isOwner(userId) {
@@ -241,7 +242,11 @@ service cloud.firestore {
     match /sales/{saleId} {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && isValidSale(request.resource.data);
-      allow delete: if isAdmin();
+      allow delete: if isAuthenticated();
+    }
+
+    match /deleted_sales/{saleId} {
+      allow read, create, update, delete: if isAuthenticated();
     }
 
     match /customers/{customerId} {

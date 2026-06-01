@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, runTransaction, query, where, getDocs, deleteDoc } from 'firebase/firestore';
-import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
+import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, RotateCcw } from 'lucide-react';
 import { cn, handleFirestoreError, OperationType, formatMMK, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 import * as XLSX from 'xlsx';
+import { motion } from 'motion/react';
 
 interface Sale {
   id: string;
@@ -82,6 +83,12 @@ export function Sales() {
     isOpen: false,
     sale: null
   });
+  const [deletedSales, setDeletedSales] = useState<Sale[]>([]);
+  const [activeTab, setActiveTab] = useState<'active' | 'deleted'>('active');
+  const [restoreConfirm, setRestoreConfirm] = useState<{ isOpen: boolean; sale: Sale | null }>({
+    isOpen: false,
+    sale: null
+  });
   
   const [formData, setFormData] = useState<{
     facebookName: string;
@@ -138,6 +145,20 @@ export function Sales() {
       }));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
+    const unsubDeletedSales = onSnapshot(collection(db, 'deleted_sales'), (snapshot) => {
+      setDeletedSales(snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          total_amount: Number(data.total_amount || data.totalAmount || 0),
+          subtotal: Number(data.subtotal || 0),
+          gross_amount: Number(data.gross_amount || data.subtotal || 0),
+          order_no: data.order_no || data.orderNumber
+        } as Sale;
+      }));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'deleted_sales'));
+
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
@@ -156,6 +177,7 @@ export function Sales() {
 
     return () => {
       unsubSales();
+      unsubDeletedSales();
       unsubProducts();
       unsubCustomers();
       unsubCategories();
@@ -214,7 +236,18 @@ export function Sales() {
     const prefix = `${mm}${yy}`;
     
     const monthSales = sales.filter(s => s.order_no?.startsWith(prefix));
-    const nextNum = String(monthSales.length + 1).padStart(4, '0');
+    const monthDeletedSales = deletedSales.filter(s => s.order_no?.startsWith(prefix));
+    const allMonthOrders = [...monthSales, ...monthDeletedSales];
+
+    let maxNum = 0;
+    allMonthOrders.forEach(s => {
+      const suffix = s.order_no?.substring(prefix.length) || '';
+      const num = parseInt(suffix, 10);
+      if (!isNaN(num) && num > maxNum) {
+        maxNum = num;
+      }
+    });
+    const nextNum = String(maxNum + 1).padStart(4, '0');
     return `${prefix}${nextNum}`;
   };
 
@@ -604,6 +637,13 @@ Thank you for your order!
         if (sale.id) {
           transaction.delete(doc(db, 'sales', sale.id));
 
+          // Save to deleted_sales
+          const dsRef = doc(db, 'deleted_sales', sale.id);
+          transaction.set(dsRef, {
+            ...sale,
+            deletedAt: serverTimestamp()
+          });
+
           // Log the return to inventory
           (sale.items || []).forEach(item => {
             const pid = item.product_id || (item as any).productId;
@@ -649,7 +689,7 @@ Thank you for your order!
               if (pid && productDocs[pid]) {
                 const pRef = doc(db, 'products', pid);
                 transaction.update(pRef, { 
-                  total_stock: (productDocs[pid].total_stock || 0) - item.qty 
+                   total_stock: (productDocs[pid].total_stock || 0) - item.qty 
                 });
               }
             }
@@ -671,6 +711,7 @@ Thank you for your order!
                 updatedAt: serverTimestamp(),
                 isUndone: true
               });
+              transaction.delete(doc(db, 'deleted_sales', sale.id));
             }
           });
         }
@@ -680,7 +721,86 @@ Thank you for your order!
     }
   };
 
-  const filteredSales = sales.filter(s => {
+  const handleRestore = async (sale: Sale) => {
+    try {
+      await runTransaction(db, async (transaction) => {
+        // --- 1. READS SECTION ---
+        const productDocs: { [id: string]: any } = {};
+        for (const item of (sale.items || [])) {
+          const pid = item.product_id || (item as any).productId;
+          if (pid && !productDocs[pid]) {
+            const pRef = doc(db, 'products', pid);
+            const pDoc = await transaction.get(pRef);
+            if (pDoc.exists()) {
+              productDocs[pid] = pDoc.data();
+            }
+          }
+        }
+
+        const cid = sale.customer_id || (sale as any).customerId;
+        const cDoc = cid ? await transaction.get(doc(db, 'customers', cid)) : null;
+
+        // --- 2. WRITES SECTION ---
+        for (const item of (sale.items || [])) {
+          const pid = item.product_id || (item as any).productId;
+          if (pid && productDocs[pid]) {
+            const currentStock = productDocs[pid].total_stock || 0;
+            const newStock = currentStock - item.qty;
+            transaction.update(doc(db, 'products', pid), { total_stock: newStock });
+            productDocs[pid].total_stock = newStock;
+          }
+        }
+
+        if (cDoc?.exists()) {
+          const subtotal = sale.subtotal || sale.total_amount;
+          const pointsToAdd = Math.floor(subtotal / 4000);
+          const currentData = cDoc.data();
+          const currentPoints = currentData.points || 0;
+          const currentOrderCount = currentData.orderCount || 0;
+          
+          transaction.update(cDoc.ref, { 
+            points: currentPoints + pointsToAdd,
+            orderCount: currentOrderCount + 1
+          });
+        }
+
+        if (sale.id) {
+          const { deletedAt, ...saleInfo } = sale as any;
+          transaction.set(doc(db, 'sales', sale.id), {
+            ...saleInfo,
+            updatedAt: serverTimestamp()
+          });
+
+          transaction.delete(doc(db, 'deleted_sales', sale.id));
+
+          // Log the return to inventory
+          (sale.items || []).forEach(item => {
+            const pid = item.product_id || (item as any).productId;
+            if (pid) {
+              const logRef = doc(collection(db, 'inventory_logs'));
+              transaction.set(logRef, {
+                product_id: pid,
+                productName: item.name || 'Unknown',
+                type: 'OUT',
+                qty: item.qty,
+                referenceId: sale.id,
+                reason: 'Sale Restored',
+                date: serverTimestamp(),
+              });
+            }
+          });
+        }
+      });
+
+      alert(`Order #${sale.order_no} has been restored back to Sales successfully!`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'sales');
+    }
+  };
+
+  const currentSalesSource = activeTab === 'active' ? sales : deletedSales;
+
+  const filteredSales = currentSalesSource.filter(s => {
     // Global filter
     const matchesSearch = (s.customerName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
                          (s.order_no || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -709,11 +829,11 @@ Thank you for your order!
   const { items: sortedSales, requestSort, sortConfig } = useSortableData(filteredSales, { key: 'createdAt', direction: 'desc' });
 
   // Get unique values for dropdowns
-  const uniqueOrderNos = Array.from(new Set(sales.map(s => s.order_no))).filter(Boolean).sort();
-  const uniqueDates = Array.from(new Set(sales.map(s => s.date))).filter(Boolean).sort().reverse();
-  const uniqueCustomerNames = Array.from(new Set(sales.map(s => s.customerName))).filter(Boolean).sort();
-  const uniquePhones = Array.from(new Set(sales.map(s => s.phone || customers.find(c => c.id === s.customer_id)?.phone))).filter(Boolean).sort();
-  const uniqueProductCodes = Array.from(new Set(sales.flatMap(s => s.items.map(i => {
+  const uniqueOrderNos = Array.from(new Set(currentSalesSource.map(s => s.order_no))).filter(Boolean).sort();
+  const uniqueDates = Array.from(new Set(currentSalesSource.map(s => s.date))).filter(Boolean).sort().reverse();
+  const uniqueCustomerNames = Array.from(new Set(currentSalesSource.map(s => s.customerName))).filter(Boolean).sort();
+  const uniquePhones = Array.from(new Set(currentSalesSource.map(s => s.phone || customers.find(c => c.id === s.customer_id)?.phone))).filter(Boolean).sort();
+  const uniqueProductCodes = Array.from(new Set(currentSalesSource.flatMap(s => s.items.map(i => {
     const product = products.find(p => p.id === i.product_id);
     const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
     return product?.productCode || master?.productCode || 'N/A';
@@ -757,6 +877,59 @@ Thank you for your order!
 
   return (
     <div className="space-y-6">
+      {/* Tab Selector */}
+      <div className="flex border-b border-slate-200">
+        <button
+          onClick={() => {
+            setActiveTab('active');
+            setColumnFilters({
+              order_no: '',
+              date: '',
+              customerName: '',
+              phone: '',
+              productCode: '',
+              paymentMethod: '',
+              payment_status: '',
+            });
+          }}
+          className={cn(
+            "px-6 py-3 text-sm font-bold border-b-2 transition-all",
+            activeTab === 'active' 
+              ? "border-pink-600 text-pink-600" 
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          Active Orders (အရောင်းစာရင်း)
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('deleted');
+            setColumnFilters({
+              order_no: '',
+              date: '',
+              customerName: '',
+              phone: '',
+              productCode: '',
+              paymentMethod: '',
+              payment_status: '',
+            });
+          }}
+          className={cn(
+            "px-6 py-3 text-sm font-bold border-b-2 transition-all flex items-center gap-2",
+            activeTab === 'deleted' 
+              ? "border-pink-600 text-pink-600" 
+              : "border-transparent text-slate-500 hover:text-slate-800"
+          )}
+        >
+          Deleted Orders (ဖျက်လိုက်သော Order များ)
+          {deletedSales.length > 0 && (
+            <span className="bg-rose-100 text-rose-600 text-[10px] px-2 py-0.5 rounded-full font-bold">
+              {deletedSales.length}
+            </span>
+          )}
+        </button>
+      </div>
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-6">
           <div className="relative flex-1 max-w-md">
@@ -771,7 +944,9 @@ Thank you for your order!
           </div>
           <div className="bg-pink-50 px-4 py-2 rounded-xl border border-pink-100 flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-pink-600" />
-            <span className="text-xs font-bold text-pink-900 uppercase">Total Orders:</span>
+            <span className="text-xs font-bold text-pink-900 uppercase">
+              {activeTab === 'active' ? 'Total Active Orders:' : 'Total Deleted Orders:'}
+            </span>
             <span className="text-sm font-black text-pink-600">{filteredSales.length}</span>
           </div>
         </div>
@@ -783,13 +958,15 @@ Thank you for your order!
             <FileSpreadsheet className="w-5 h-5 group-hover:scale-110 transition-transform" />
             <span className="hidden sm:inline">Export Excel</span>
           </button>
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center justify-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
-          >
-            <Plus className="w-5 h-5" />
-            New Sale
-          </button>
+          {activeTab === 'active' && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition-all shadow-lg shadow-pink-100"
+            >
+              <Plus className="w-5 h-5" />
+              New Sale
+            </button>
+          )}
         </div>
       </div>
 
@@ -908,8 +1085,18 @@ Thank you for your order!
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {sortedSales.map((sale) => (
-              <tr key={sale.id} className="hover:bg-slate-50 transition-colors group">
+            {sortedSales.map((sale, index) => (
+              <motion.tr 
+                key={sale.id} 
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ 
+                  duration: 0.25, 
+                  delay: Math.min(index * 0.03, 0.3), 
+                  ease: "easeOut" 
+                }}
+                className="hover:bg-slate-50 transition-colors group"
+              >
                 <td className="px-6 py-4 font-mono text-xs font-bold text-slate-500">{sale.order_no}</td>
                 <td className="px-6 py-4 text-slate-600 text-xs">{format(new Date(sale.date), 'MMM d, yyyy')}</td>
                 <td className="px-6 py-4">
@@ -972,31 +1159,48 @@ Thank you for your order!
                 </td>
                 <td className="px-6 py-4 text-center">
                   <div className="flex items-center justify-center gap-1">
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openEditModal(sale);
-                      }} 
-                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
-                      title="Edit Order"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setDeleteConfirm({ isOpen: true, sale });
-                      }} 
-                      className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
-                      title="Delete Order"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {activeTab === 'active' ? (
+                      <>
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openEditModal(sale);
+                          }} 
+                          className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
+                          title="Edit Order"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setDeleteConfirm({ isOpen: true, sale });
+                          }} 
+                          className="p-2 text-slate-400 hover:text-pink-600 hover:bg-pink-50 rounded-lg transition-all"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setRestoreConfirm({ isOpen: true, sale });
+                        }} 
+                        className="px-3 py-1.5 bg-pink-50 hover:bg-pink-100 text-pink-600 border border-pink-200 rounded-lg transition-all flex items-center gap-1 text-xs font-bold"
+                        title="Sales ထဲပြန်ထည့်ရန်"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Restore
+                      </button>
+                    )}
                   </div>
                 </td>
-              </tr>
+              </motion.tr>
             ))}
           </tbody>
         </table>
@@ -1273,6 +1477,19 @@ Thank you for your order!
         onConfirm={() => deleteConfirm.sale && handleDelete(deleteConfirm.sale)}
         onCancel={() => setDeleteConfirm({ isOpen: false, sale: null })}
         confirmText="Delete Order"
+      />
+      <ConfirmModal
+        isOpen={restoreConfirm.isOpen}
+        title="Restore Sale Order"
+        message={`Are you sure you want to restore order #${restoreConfirm.sale?.order_no} back to Sales? This will subtract product stock and add customer points.`}
+        onConfirm={() => {
+          if (restoreConfirm.sale) {
+            handleRestore(restoreConfirm.sale);
+            setRestoreConfirm({ isOpen: false, sale: null });
+          }
+        }}
+        onCancel={() => setRestoreConfirm({ isOpen: false, sale: null })}
+        confirmText="Restore Order"
       />
     </div>
   );

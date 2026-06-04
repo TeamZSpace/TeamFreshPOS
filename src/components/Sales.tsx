@@ -809,11 +809,15 @@ Thank you for your order!
 
     // Column filters
     const phone = s.phone || customers.find(c => c.id === s.customer_id)?.phone || '';
-    const itemCodes = s.items.map(i => {
-      const product = products.find(p => p.id === i.product_id);
-      const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
-      return product?.productCode || master?.productCode || 'N/A';
-    }).join(' ');
+      const items = s.items || [];
+      const itemCodes = items.map(i => {
+        const product = products.find(p => p.id === i.product_id);
+        const master = masterProducts.find(m => 
+          (m.productCode && product?.productCode && m.productCode.trim().toLowerCase() === product.productCode.trim().toLowerCase()) ||
+          m.name.toLowerCase() === i.name.toLowerCase()
+        );
+        return product?.productCode || master?.productCode || 'N/A';
+      }).join(' ');
 
     return (
       (columnFilters.order_no === '' || (s.order_no || '') === columnFilters.order_no) &&
@@ -833,9 +837,12 @@ Thank you for your order!
   const uniqueDates = Array.from(new Set(currentSalesSource.map(s => s.date))).filter(Boolean).sort().reverse();
   const uniqueCustomerNames = Array.from(new Set(currentSalesSource.map(s => s.customerName))).filter(Boolean).sort();
   const uniquePhones = Array.from(new Set(currentSalesSource.map(s => s.phone || customers.find(c => c.id === s.customer_id)?.phone))).filter(Boolean).sort();
-  const uniqueProductCodes = Array.from(new Set(currentSalesSource.flatMap(s => s.items.map(i => {
+  const uniqueProductCodes = Array.from(new Set(currentSalesSource.flatMap(s => (s.items || []).map(i => {
     const product = products.find(p => p.id === i.product_id);
-    const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
+    const master = masterProducts.find(m => 
+      (m.productCode && product?.productCode && m.productCode.trim().toLowerCase() === product.productCode.trim().toLowerCase()) ||
+      m.name.toLowerCase() === i.name.toLowerCase()
+    );
     return product?.productCode || master?.productCode || 'N/A';
   })))).filter(Boolean).sort();
 
@@ -848,9 +855,12 @@ Thank you for your order!
         'Customer': s.customerName,
         'Facebook Name': customer?.facebookName || '',
         'Phone': s.phone || customer?.phone || '',
-        'Product Code': s.items.map(i => {
+        'Product Code': (s.items || []).map(i => {
           const product = products.find(p => p.id === i.product_id);
-          const master = masterProducts.find(m => m.name.toLowerCase() === i.name.toLowerCase());
+          const master = masterProducts.find(m => 
+            (m.productCode && product?.productCode && m.productCode.trim().toLowerCase() === product.productCode.trim().toLowerCase()) ||
+            m.name.toLowerCase() === i.name.toLowerCase()
+          );
           return `${i.qty}x ${product?.productCode || master?.productCode || 'N/A'}`;
         }).join(', '),
         'Payment': s.paymentMethod,
@@ -1110,9 +1120,12 @@ Thank you for your order!
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
-                    {sale.items.map((item, i) => {
+                    {(sale.items || []).map((item, i) => {
                       const product = products.find(p => p.id === item.product_id);
-                      const master = masterProducts.find(m => m.name.toLowerCase() === item.name.toLowerCase());
+                      const master = masterProducts.find(m => 
+                        (m.productCode && product?.productCode && m.productCode.trim().toLowerCase() === product.productCode.trim().toLowerCase()) ||
+                        m.name.toLowerCase() === item.name.toLowerCase()
+                      );
                       const code = product?.productCode || master?.productCode || 'N/A';
                       return (
                         <span key={i} className="px-2 py-0.5 bg-slate-50 text-slate-900 rounded text-[10px] font-bold border border-slate-200">

@@ -2,7 +2,6 @@ import React from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { MessageSquare, Send, Bot, Sparkles, TrendingUp, AlertCircle, Loader2, Minimize2 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 import { formatMMK, cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
@@ -107,12 +106,6 @@ export function AIStrategist() {
     setIsLoading(true);
 
     try {
-      const apiKey = process.env.GEMINI_API_KEY;
-      if (!apiKey) {
-        throw new Error("AI key မရှိပါ။ ကျေးဇူးပြု၍ Settings တွင် check လုပ်ပေးပါ။");
-      }
-      
-      const ai = new GoogleGenAI({ apiKey });
       const context = getSystemContext();
       
       // Filter messages to ensure sequence makes sense for Gemini API
@@ -123,18 +116,29 @@ export function AIStrategist() {
           parts: [{ text: m.text }] 
         }));
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        config: {
-          systemInstruction: context,
+      const contents = [
+        ...apiHistory,
+        { role: 'user', parts: [{ text: userMsgText }] }
+      ];
+
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
         },
-        contents: [
-          ...apiHistory,
-          { role: 'user', parts: [{ text: userMsgText }] }
-        ]
+        body: JSON.stringify({
+          contents,
+          systemInstruction: context
+        })
       });
 
-      const responseText = response.text || "တောင်းပန်ပါတယ်၊ အခုလောလောဆယ် အကြံဉာဏ်မပေးနိုင်သေးပါဘူး။ နောက်မှ ပြန်ကြိုးစားကြည့်ပေးပါ။";
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData?.error || "AI server error");
+      }
+
+      const responseData = await res.json();
+      const responseText = responseData.text || "တောင်းပန်ပါတယ်၊ အခုလောလောဆယ် အကြံဉာဏ်မပေးနိုင်သေးပါဘူး။ နောက်မှ ပြန်ကြိုးစားကြည့်ပေးပါ။";
       
       setMessages(prev => [...prev, {
         role: 'model',
@@ -143,8 +147,8 @@ export function AIStrategist() {
       }]);
     } catch (error: any) {
       console.error('AI Error:', error);
-      const errorMsg = error?.message?.includes("AI key") 
-        ? error.message
+      const errorMsg = error?.message?.includes("GEMINI_API_KEY") 
+        ? "AI key မရှိသေးပါ။ ကျေးဇူးပြု၍ Settings > Secrets တွင် 'GEMINI_API_KEY' ကို ထည့်သွင်းပေးပါ။"
         : `အမှားတစ်ခု ဖြစ်ပေါ်နေပါတယ်: ${error?.message || "connection error"}. ကျေးဇူးပြု၍ ပြန်ကြိုးစားကြည့်ပေးပါ။`;
       
       setMessages(prev => [...prev, {

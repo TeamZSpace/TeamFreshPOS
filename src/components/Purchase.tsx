@@ -458,7 +458,10 @@ export function Purchase() {
           <tbody className="divide-y divide-slate-100">
             {sortedPurchases.map((purchase) => {
               const product = products.find(p => p.id === purchase.product_id);
-              const masterProduct = masterProducts.find(m => m.name.toLowerCase() === (product?.name || '').toLowerCase());
+              const masterProduct = masterProducts.find(m => 
+                (m.productCode && product?.productCode && m.productCode.trim().toLowerCase() === product.productCode.trim().toLowerCase()) || 
+                m.name.toLowerCase() === (product?.name || '').toLowerCase()
+              );
               const displayCode = masterProduct?.productCode || product?.productCode || '-';
               const supplier = suppliers.find(s => s.id === purchase.supplierId);
               const category = categories.find(c => c.id === purchase.categoryId);

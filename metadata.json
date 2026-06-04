@@ -1,5 +1,6 @@
 {
   "name": "FreshPOS - Supplement & Skin Care ERP",
   "description": "A baby pink themed Profit, Loss, Inventory, Sales, and CRM application with a heart logo for modern supplement and skin care shops.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

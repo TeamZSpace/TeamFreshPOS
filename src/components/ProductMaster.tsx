@@ -1,11 +1,228 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
-import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, serverTimestamp, getDocs, writeBatch } from 'firebase/firestore';
 import { Plus, Edit2, Trash2, Search, ClipboardList, Package, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
 import { handleFirestoreError, OperationType, useSortableData } from '../lib/utils';
 import { ConfirmModal } from './ConfirmModal';
 import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
+
+function replaceBrandInText(text: string, oldBrand: string, newBrand: string): string {
+  if (!text || !oldBrand || !newBrand || oldBrand.trim().toLowerCase() === newBrand.trim().toLowerCase()) return text;
+  const escaped = oldBrand.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+  const regex = new RegExp(escaped, 'gi');
+  return text.replace(regex, newBrand);
+}
+
+async function propagateProductMasterChanges(
+  masterId: string,
+  changes: {
+    oldName: string;
+    oldProductCode: string;
+    newName: string;
+    newProductCode: string;
+    newBrand: string;
+    newCategory: string;
+    newDosage: string;
+    newUnitCount: string;
+    newDosageForm: string;
+    oldBrand?: string;
+  }
+) {
+  try {
+    const batch = writeBatch(db);
+    const exactProductIds = new Set<string>();
+    const siblingProductIds = new Set<string>();
+    exactProductIds.add(masterId);
+
+    const matchCodeOld = (changes.oldProductCode || '').trim().toLowerCase();
+    const matchNameOld = (changes.oldName || '').trim().toLowerCase();
+    const oldBrand = (changes.oldBrand || '').trim();
+
+    // 1. UPDATE products (Inventory)
+    const productsSnap = await getDocs(collection(db, 'products'));
+    productsSnap.forEach((productDoc) => {
+      const data = productDoc.data();
+      const pCode = (data.productCode || '').trim().toLowerCase();
+      const pName = (data.name || '').trim().toLowerCase();
+
+      const isMatch =
+        productDoc.id === masterId ||
+        (matchCodeOld && pCode === matchCodeOld) ||
+        (matchNameOld && pName === matchNameOld);
+
+      if (isMatch) {
+        exactProductIds.add(productDoc.id);
+        const productRef = doc(db, 'products', productDoc.id);
+        batch.update(productRef, {
+          name: changes.newName,
+          productCode: changes.newProductCode,
+          brand: changes.newBrand,
+          dosage: changes.newDosage || '',
+          unitCount: changes.newUnitCount || '',
+          dosageForm: changes.newDosageForm || '',
+          updatedAt: serverTimestamp()
+        });
+      } else {
+        const containsOldBrand = oldBrand && data.name && data.name.toLowerCase().includes(oldBrand.toLowerCase());
+        const isBrandMatch = oldBrand && data.brand && data.brand.trim().toLowerCase() === oldBrand.toLowerCase();
+
+        if (isBrandMatch || containsOldBrand) {
+          siblingProductIds.add(productDoc.id);
+          const productRef = doc(db, 'products', productDoc.id);
+          const updatedName = replaceBrandInText(data.name || '', oldBrand, changes.newBrand);
+          batch.update(productRef, {
+            name: updatedName,
+            brand: changes.newBrand,
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+    });
+
+    const allTargetProductIds = new Set<string>([...exactProductIds, ...siblingProductIds]);
+
+    // 2. UPDATE purchases
+    const purchasesSnap = await getDocs(collection(db, 'purchases'));
+    purchasesSnap.forEach((purchaseDoc) => {
+      const data = purchaseDoc.data();
+      const purCode = (data.productCode || '').trim().toLowerCase();
+      const isIdMatch = data.product_id && allTargetProductIds.has(data.product_id);
+      const isCodeMatch = matchCodeOld && purCode === matchCodeOld;
+
+      if (isIdMatch || isCodeMatch) {
+        const purchaseRef = doc(db, 'purchases', purchaseDoc.id);
+        batch.update(purchaseRef, {
+          productCode: changes.newProductCode,
+          product_id: data.product_id ? (exactProductIds.has(data.product_id) ? data.product_id : masterId) : masterId
+        });
+      }
+    });
+
+    // 3. UPDATE sales
+    const salesSnap = await getDocs(collection(db, 'sales'));
+    salesSnap.forEach((saleDoc) => {
+      const data = saleDoc.data();
+      if (Array.isArray(data.items)) {
+        let updated = false;
+        const updatedItems = data.items.map((item: any) => {
+          const itemCode = (item.productCode || '').trim().toLowerCase();
+          const itemName = (item.name || '').trim().toLowerCase();
+          const isExactItemIdMatch = item.product_id && exactProductIds.has(item.product_id);
+          const isExactCodeMatch = matchCodeOld && itemCode === matchCodeOld;
+          const isExactNameMatch = matchNameOld && itemName === matchNameOld;
+
+          if (isExactItemIdMatch || isExactCodeMatch || isExactNameMatch) {
+            updated = true;
+            return {
+              ...item,
+              name: changes.newName,
+              product_id: item.product_id ? item.product_id : masterId
+            };
+          }
+
+          const containsOldBrand = oldBrand && item.name && item.name.toLowerCase().includes(oldBrand.toLowerCase());
+          const isSiblingIdMatch = item.product_id && siblingProductIds.has(item.product_id);
+
+          if (isSiblingIdMatch || containsOldBrand) {
+            updated = true;
+            return {
+              ...item,
+              name: replaceBrandInText(item.name, oldBrand, changes.newBrand)
+            };
+          }
+
+          return item;
+        });
+
+        if (updated) {
+          const saleRef = doc(db, 'sales', saleDoc.id);
+          batch.update(saleRef, {
+            items: updatedItems
+          });
+        }
+      }
+    });
+
+    // 4. UPDATE deleted_sales
+    const deletedSalesSnap = await getDocs(collection(db, 'deleted_sales'));
+    deletedSalesSnap.forEach((saleDoc) => {
+      const data = saleDoc.data();
+      if (Array.isArray(data.items)) {
+        let updated = false;
+        const updatedItems = data.items.map((item: any) => {
+          const itemCode = (item.productCode || '').trim().toLowerCase();
+          const itemName = (item.name || '').trim().toLowerCase();
+          const isExactItemIdMatch = item.product_id && exactProductIds.has(item.product_id);
+          const isExactCodeMatch = matchCodeOld && itemCode === matchCodeOld;
+          const isExactNameMatch = matchNameOld && itemName === matchNameOld;
+
+          if (isExactItemIdMatch || isExactCodeMatch || isExactNameMatch) {
+            updated = true;
+            return {
+              ...item,
+              name: changes.newName,
+              product_id: item.product_id ? item.product_id : masterId
+            };
+          }
+
+          const containsOldBrand = oldBrand && item.name && item.name.toLowerCase().includes(oldBrand.toLowerCase());
+          const isSiblingIdMatch = item.product_id && siblingProductIds.has(item.product_id);
+
+          if (isSiblingIdMatch || containsOldBrand) {
+            updated = true;
+            return {
+              ...item,
+              name: replaceBrandInText(item.name, oldBrand, changes.newBrand)
+            };
+          }
+
+          return item;
+        });
+
+        if (updated) {
+          const saleRef = doc(db, 'deleted_sales', saleDoc.id);
+          batch.update(saleRef, {
+            items: updatedItems
+          });
+        }
+      }
+    });
+
+    // 5. UPDATE inventory_logs
+    const logsSnap = await getDocs(collection(db, 'inventory_logs'));
+    logsSnap.forEach((logDoc) => {
+      const data = logDoc.data();
+      const logCode = (data.productCode || '').trim().toLowerCase();
+      const logName = (data.productName || '').trim().toLowerCase();
+      const isExactIdMatch = data.product_id && exactProductIds.has(data.product_id);
+      const isExactCodeMatch = matchCodeOld && logCode === matchCodeOld;
+      const isExactNameMatch = matchNameOld && logName === matchNameOld;
+
+      if (isExactIdMatch || isExactCodeMatch || isExactNameMatch) {
+        const logRef = doc(db, 'inventory_logs', logDoc.id);
+        batch.update(logRef, {
+          productName: changes.newName,
+          product_id: data.product_id ? data.product_id : masterId
+        });
+      } else {
+        const containsOldBrand = oldBrand && data.productName && data.productName.toLowerCase().includes(oldBrand.toLowerCase());
+        const isSiblingIdMatch = data.product_id && siblingProductIds.has(data.product_id);
+
+        if (isSiblingIdMatch || containsOldBrand) {
+          const logRef = doc(db, 'inventory_logs', logDoc.id);
+          batch.update(logRef, {
+            productName: replaceBrandInText(data.productName, oldBrand, changes.newBrand)
+          });
+        }
+      }
+    });
+
+    await batch.commit();
+  } catch (err) {
+    console.error('Failed to propagate Product Master changes:', err);
+  }
+}
 
 interface ProductDefinition {
   id: string;
@@ -89,9 +306,26 @@ export function ProductMaster() {
 
     try {
       if (editingProduct) {
+        const oldName = editingProduct.name;
+        const oldProductCode = editingProduct.productCode;
+
         await updateDoc(doc(db, 'productMaster', editingProduct.id), {
           ...formData,
           updatedAt: serverTimestamp(),
+        });
+
+        // Cascading propagate changes to all other related collections
+        await propagateProductMasterChanges(editingProduct.id, {
+          oldName,
+          oldProductCode,
+          newName: formData.name,
+          newProductCode: formData.productCode,
+          newBrand: formData.brand || '',
+          newCategory: formData.category || '',
+          newDosage: formData.dosage || '',
+          newUnitCount: formData.unitCount || '',
+          newDosageForm: formData.dosageForm || '',
+          oldBrand: editingProduct.brand || ''
         });
       } else {
         await addDoc(collection(db, 'productMaster'), {

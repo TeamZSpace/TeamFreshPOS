@@ -247,7 +247,10 @@ export function Inventory() {
   const exportToExcel = () => {
     const data = sortedProducts.map(p => {
       const category = categories.find(c => c.id === p.categoryId);
-      const masterProduct = masterProducts.find(m => m.name.toLowerCase() === p.name.toLowerCase());
+      const masterProduct = masterProducts.find(m => 
+        (m.productCode && p.productCode && m.productCode.trim().toLowerCase() === p.productCode.trim().toLowerCase()) || 
+        m.name.toLowerCase() === p.name.toLowerCase()
+      );
       const displayCode = masterProduct?.productCode || p.productCode || '';
       return {
         'Product Code': displayCode,
@@ -467,7 +470,10 @@ export function Inventory() {
               <tbody className="divide-y divide-slate-100">
                 {sortedProducts.map((product) => {
                   const isLowStock = product.total_stock < 10;
-                  const masterProduct = masterProducts.find(m => m.name.toLowerCase() === product.name.toLowerCase());
+                  const masterProduct = masterProducts.find(m => 
+                    (m.productCode && product.productCode && m.productCode.trim().toLowerCase() === product.productCode.trim().toLowerCase()) || 
+                    m.name.toLowerCase() === product.name.toLowerCase()
+                  );
                   const displayCode = masterProduct?.productCode || product.productCode || '-';
 
                   return (

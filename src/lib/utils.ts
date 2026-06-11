@@ -53,8 +53,14 @@ import { auth } from '../firebase';
 import { useState, useMemo } from 'react';
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errMsg = error instanceof Error ? error.message : String(error);
+  const isQuotaExceeded = errMsg.toLowerCase().includes('quota') || 
+                          errMsg.toLowerCase().includes('resource-exhausted') || 
+                          errMsg.toLowerCase().includes('limit exceeded') ||
+                          errMsg.toLowerCase().includes('exhausted');
+
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: errMsg,
     authInfo: {
       userId: auth.currentUser?.uid,
       email: auth.currentUser?.email,
@@ -70,9 +76,60 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     },
     operationType,
     path
+  };
+
+  if (isQuotaExceeded) {
+    console.warn('Firestore Quota Exceeded Warn: ', JSON.stringify(errInfo));
+  } else {
+    console.error('Firestore Error: ', JSON.stringify(errInfo));
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('firestore-error', { 
+      detail: { ...errInfo, isQuotaExceeded } 
+    }));
+  }
+
+  // Only throw if it's NOT a quota exceeded error to prevent crashing snapshot listeners
+  if (!isQuotaExceeded) {
+    throw new Error(JSON.stringify(errInfo));
+  }
+}
+
+export function saveToCache<T>(key: string, data: T[]) {
+  try {
+    localStorage.setItem(`fs_cache_${key}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`Failed to save cache for ${key}`, e);
+  }
+}
+
+export function getFromCache<T>(key: string, fallback: T[] = []): T[] {
+  try {
+    const cached = localStorage.getItem(`fs_cache_${key}`);
+    return cached ? JSON.parse(cached) : fallback;
+  } catch (e) {
+    console.warn(`Failed to load cache for ${key}`, e);
+    return fallback;
+  }
+}
+
+export function saveDocToCache<T>(key: string, data: T) {
+  try {
+    localStorage.setItem(`fs_cache_doc_${key}`, JSON.stringify(data));
+  } catch (e) {
+    console.warn(`Failed to save doc cache for ${key}`, e);
+  }
+}
+
+export function getDocFromCache<T>(key: string, fallback: T | null = null): T | null {
+  try {
+    const cached = localStorage.getItem(`fs_cache_doc_${key}`);
+    return cached ? JSON.parse(cached) : fallback;
+  } catch (e) {
+    console.warn(`Failed to load doc cache for ${key}`, e);
+    return fallback;
+  }
 }
 
 export function useSortableData<T>(items: T[], config: { key: string; direction: 'asc' | 'desc' } | null = null) {

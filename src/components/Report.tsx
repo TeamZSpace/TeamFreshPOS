@@ -17,9 +17,11 @@ import {
   ArrowRightLeft,
   Package,
   ShoppingCart,
-  Hash
+  Hash,
+  Search,
+  ArrowUpDown
 } from 'lucide-react';
-import { cn, formatMMK, handleFirestoreError, OperationType } from '../lib/utils';
+import { cn, formatMMK, handleFirestoreError, OperationType, saveToCache, getFromCache } from '../lib/utils';
 import { format, eachMonthOfInterval, subMonths, isSameMonth } from 'date-fns';
 import * as XLSX from 'xlsx';
 import { exportAllToExcel } from '../lib/exportUtils';
@@ -68,57 +70,72 @@ interface Purchase {
 }
 
 export function Report() {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>([]);
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
+  const [sales, setSales] = useState<Sale[]>(() => getFromCache<Sale>('sales'));
+  const [expenses, setExpenses] = useState<Expense[]>(() => getFromCache<Expense>('expenses'));
+  const [products, setProducts] = useState<Product[]>(() => getFromCache<Product>('products'));
+  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>(() => getFromCache<MasterProduct>('productMaster'));
+  const [purchases, setPurchases] = useState<Purchase[]>(() => getFromCache<Purchase>('purchases'));
   
   const [selectedMonth, setSelectedMonth] = useState(new Date());
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => products.length === 0 || sales.length === 0);
   const [isExportingMaster, setIsExportingMaster] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'detailed'>('detailed');
+  const [activeTab, setActiveTab] = useState<'overview' | 'detailed' | 'profits'>('detailed');
+  const [searchProfitQuery, setSearchProfitQuery] = useState('');
+  const [profitSortBy, setProfitSortBy] = useState<'profit' | 'qty' | 'rev' | 'name'>('profit');
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => {
-        const data = doc.data();
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data();
         return { 
           id: doc.id, 
-          ...data,
-          total_amount: Number(data.total_amount || data.totalAmount || 0),
-          subtotal: Number(data.subtotal || 0),
-          gross_amount: Number(data.gross_amount || data.subtotal || 0),
-          order_no: data.order_no || data.orderNumber
+          ...d,
+          total_amount: Number(d.total_amount || d.totalAmount || 0),
+          subtotal: Number(d.subtotal || 0),
+          gross_amount: Number(d.gross_amount || d.subtotal || 0),
+          order_no: d.order_no || d.orderNumber
         } as any;
-      }));
+      });
+      setSales(data);
+      saveToCache('sales', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
+      setExpenses(data);
+      saveToCache('expenses', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'expenses'));
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(data);
+      saveToCache('products', data);
       setIsLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'products');
+      setIsLoading(false);
+    });
 
     const unsubMaster = onSnapshot(collection(db, 'productMaster'), (snapshot) => {
-      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct));
+      setMasterProducts(data);
+      saveToCache('productMaster', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
 
     const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
-      setPurchases(snapshot.docs.map(doc => {
-        const data = doc.data();
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data();
         return {
           id: doc.id,
-          date: data.date || '',
-          product_id: data.product_id || '',
-          qty: Number(data.qty || 0),
-          purchase_price: Number(data.purchase_price || 0),
-          total_amount: Number(data.total_amount || (Number(data.qty || 0) * Number(data.purchase_price || 0)))
+          date: d.date || '',
+          product_id: d.product_id || '',
+          qty: Number(d.qty || 0),
+          purchase_price: Number(d.purchase_price || 0),
+          total_amount: Number(d.total_amount || (Number(d.qty || 0) * Number(d.purchase_price || 0)))
         } as Purchase;
-      }));
+      });
+      setPurchases(data);
+      saveToCache('purchases', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'purchases'));
 
     return () => {
@@ -135,10 +152,97 @@ export function Report() {
     end: new Date()
   }).reverse();
 
-  // Filters
-  const currentMonthSales = sales.filter(s => isSameMonth(new Date(s.date), selectedMonth));
-  const currentMonthExpenses = expenses.filter(e => isSameMonth(new Date(e.date), selectedMonth));
-  const currentMonthPurchases = purchases.filter(p => p.date && isSameMonth(new Date(p.date), selectedMonth));
+  // Filters and Period Customizations
+  const [reportPeriod, setReportPeriod] = useState<'monthly' | 'yearly' | 'all-time'>('monthly');
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+
+  const years = React.useMemo(() => {
+    const yearsSet = new Set<number>();
+    yearsSet.add(new Date().getFullYear());
+    sales.forEach(s => {
+      if (s.date) {
+        try {
+          yearsSet.add(new Date(s.date).getFullYear());
+        } catch (_) {}
+      }
+    });
+    expenses.forEach(e => {
+      if (e.date) {
+        try {
+          yearsSet.add(new Date(e.date).getFullYear());
+        } catch (_) {}
+      }
+    });
+    purchases.forEach(p => {
+      if (p.date) {
+        try {
+          yearsSet.add(new Date(p.date).getFullYear());
+        } catch (_) {}
+      }
+    });
+    return Array.from(yearsSet).sort((a, b) => b - a);
+  }, [sales, expenses, purchases]);
+
+  const currentPeriodLabel = React.useMemo(() => {
+    if (reportPeriod === 'monthly') {
+      return format(selectedMonth, 'MMMM yyyy');
+    } else if (reportPeriod === 'yearly') {
+      return `Year ${selectedYear}`;
+    } else {
+      return 'All Time';
+    }
+  }, [reportPeriod, selectedMonth, selectedYear]);
+
+  const currentMonthSales = React.useMemo(() => {
+    return sales.filter(s => {
+      if (!s.date) return false;
+      try {
+        const d = new Date(s.date);
+        if (reportPeriod === 'monthly') {
+          return isSameMonth(d, selectedMonth);
+        } else if (reportPeriod === 'yearly') {
+          return d.getFullYear() === selectedYear;
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    });
+  }, [sales, reportPeriod, selectedMonth, selectedYear]);
+
+  const currentMonthExpenses = React.useMemo(() => {
+    return expenses.filter(e => {
+      if (!e.date) return false;
+      try {
+        const d = new Date(e.date);
+        if (reportPeriod === 'monthly') {
+          return isSameMonth(d, selectedMonth);
+        } else if (reportPeriod === 'yearly') {
+          return d.getFullYear() === selectedYear;
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    });
+  }, [expenses, reportPeriod, selectedMonth, selectedYear]);
+
+  const currentMonthPurchases = React.useMemo(() => {
+    return purchases.filter(p => {
+      if (!p.date) return false;
+      try {
+        const d = new Date(p.date);
+        if (reportPeriod === 'monthly') {
+          return isSameMonth(d, selectedMonth);
+        } else if (reportPeriod === 'yearly') {
+          return d.getFullYear() === selectedYear;
+        }
+        return true;
+      } catch (_) {
+        return false;
+      }
+    });
+  }, [purchases, reportPeriod, selectedMonth, selectedYear]);
 
   // Calculations
   const totalRevenue = currentMonthSales.reduce((sum, s) => {
@@ -174,7 +278,7 @@ export function Report() {
 
   // Aggregated Monthly Sales
   const monthlySoldProducts = React.useMemo(() => {
-    const map: { [pid: string]: { name: string; qty: number; totalRev: number; avgCost: number } } = {};
+    const map: { [pid: string]: { name: string; qty: number; totalRev: number; totalCost: number } } = {};
     currentMonthSales.forEach(sale => {
       (sale.items || []).forEach(item => {
         const pid = item.product_id || (item as any).id;
@@ -187,18 +291,57 @@ export function Report() {
         const pName = prod?.name || item.name || 'Unknown Product';
         
         if (!map[pid]) {
-          map[pid] = { name: pName, qty: 0, totalRev: 0, avgCost: cost };
+          map[pid] = { name: pName, qty: 0, totalRev: 0, totalCost: 0 };
         }
         map[pid].qty += qty;
         map[pid].totalRev += qty * price;
+        map[pid].totalCost += qty * cost;
       });
     });
-    return Object.entries(map).map(([id, val]) => ({
-      id,
-      ...val,
-      avgPrice: val.qty > 0 ? val.totalRev / val.qty : 0
-    }));
+    return Object.entries(map).map(([id, val]) => {
+      const profit = val.totalRev - val.totalCost;
+      return {
+        id,
+        name: val.name,
+        qty: val.qty,
+        totalRev: val.totalRev,
+        totalCost: val.totalCost,
+        profit,
+        avgPrice: val.qty > 0 ? val.totalRev / val.qty : 0,
+        avgCost: val.qty > 0 ? val.totalCost / val.qty : 0
+      };
+    });
   }, [currentMonthSales, products]);
+
+  // Filtered and Sorted Item-wise Profits for the dedicated view
+  const filteredAndSortedProfits = React.useMemo(() => {
+    let result = [...monthlySoldProducts];
+    
+    // 1. Filter by Search Query
+    if (searchProfitQuery.trim()) {
+      const q = searchProfitQuery.toLowerCase().trim();
+      result = result.filter(item => {
+        const master = masterProducts.find(m => m.name.toLowerCase() === item.name.toLowerCase());
+        const code = master?.productCode?.toLowerCase() || '';
+        return item.name.toLowerCase().includes(q) || code.includes(q);
+      });
+    }
+
+    // 2. Sort
+    result.sort((a, b) => {
+      if (profitSortBy === 'profit') {
+        return b.profit - a.profit; // Highest profit first
+      } else if (profitSortBy === 'qty') {
+        return b.qty - a.qty; // Highest quantity sold first
+      } else if (profitSortBy === 'rev') {
+        return b.totalRev - a.totalRev; // Highest revenue first
+      } else {
+        return a.name.localeCompare(b.name); // Alphabetical A-Z
+      }
+    });
+
+    return result;
+  }, [monthlySoldProducts, searchProfitQuery, profitSortBy, masterProducts]);
 
   // Aggregated Monthly Purchases
   const monthlyPurchasedProducts = React.useMemo(() => {
@@ -262,11 +405,23 @@ export function Report() {
   const exportToExcel = () => {
     const wb = XLSX.utils.book_new();
 
+    const periodStr = reportPeriod === 'monthly' 
+      ? format(selectedMonth, 'MMMM yyyy') 
+      : reportPeriod === 'yearly' 
+      ? `Year ${selectedYear}` 
+      : 'All Months (All Time)';
+
+    const fileSuffix = reportPeriod === 'monthly' 
+      ? format(selectedMonth, 'yyyy_MM') 
+      : reportPeriod === 'yearly' 
+      ? `year_${selectedYear}` 
+      : 'all_months';
+
     if (activeTab === 'detailed') {
       // 1. Summary Sheet
       const summaryData = [
-        ['FreshPOS - Monthly Comprehensive Financial & Inventory Report', ''],
-        ['Month (လအလိုက်):', format(selectedMonth, 'MMMM yyyy')],
+        [`FreshPOS - Comprehensive Financial & Inventory Report (${periodStr})`, ''],
+        ['Period (ကာလ):', periodStr],
         [],
         ['Metric (သတ်မှတ်ချက်)', 'Amount (ပမာဏ - MMK)'],
         ['Total Sales Revenue (စုစုပေါင်း ရောင်းရငွေ)', totalRevenue],
@@ -275,7 +430,7 @@ export function Report() {
         ['Total Operating Expenses (စုစုပေါင်း အသုံးစရိတ်)', totalExpenses],
         ['Net Profit / Loss (အသားတင် အမြတ်/အရှုံး)', netProfit],
         ['Profit Margin (%)', (profitMargin || 0).toFixed(2) + '%'],
-        ['Total Purchases This Month (စုစုပေါင်း ဝယ်ယူမှုတန်ဖိုး)', totalPurchasesAmount],
+        ['Total Purchases This Period (စုစုပေါင်း ဝယ်ယူမှုတန်ဖိုး)', totalPurchasesAmount],
         ['Total Current Inventory Stock Value (လက်ရှိ လက်ကျန်စုစုပေါင်းတန်ဖိုး)', totalInventoryValue]
       ];
       const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
@@ -296,24 +451,28 @@ export function Report() {
         ]);
       });
       const wsPurchases = XLSX.utils.aoa_to_sheet(purchaseRows);
-      XLSX.utils.book_append_sheet(wb, wsPurchases, 'Purchases this Month');
+      XLSX.utils.book_append_sheet(wb, wsPurchases, 'Purchases');
 
       // 3. Sales Sheet
       const salesRows = [
-        ['Product Code', 'Product Name', 'Quantity Sold', 'Average Sold Price (MMK)', 'Total Sales (MMK)']
+        ['Product Code', 'Product Name', 'Quantity Sold', 'Average Sold Price (MMK)', 'Total Sales (MMK)', 'Total Cost (MMK)', 'Total Profit (MMK)', 'Margin (%)']
       ];
       monthlySoldProducts.forEach(val => {
         const master = masterProducts.find(m => m.name.toLowerCase() === val.name.toLowerCase());
+        const marginPct = val.totalRev > 0 ? ((val.profit / val.totalRev) * 100).toFixed(1) + '%' : '0%';
         salesRows.push([
           master?.productCode || '-',
           val.name,
           val.qty.toString(),
           val.avgPrice.toFixed(0),
-          val.totalRev.toString()
+          val.totalRev.toString(),
+          val.totalCost.toString(),
+          val.profit.toString(),
+          marginPct
         ]);
       });
       const wsSales = XLSX.utils.aoa_to_sheet(salesRows);
-      XLSX.utils.book_append_sheet(wb, wsSales, 'Sales this Month');
+      XLSX.utils.book_append_sheet(wb, wsSales, 'Sales');
 
       // 4. Expenses Sheet
       const expenseRows = [
@@ -352,7 +511,7 @@ export function Report() {
     } else {
       // Classic summary report
       const reportData = [
-        ['Monthly Financial Report', format(selectedMonth, 'MMMM yyyy')],
+        ['Financial Report', periodStr],
         [],
         ['Metric', 'Amount'],
         ['Total Revenue', totalRevenue],
@@ -364,17 +523,33 @@ export function Report() {
         [],
         ['Sales Details'],
         ['Date', 'Order ID', 'Amount'],
-        ...currentMonthSales.map(s => [format(new Date(s.date), 'yyyy-MM-dd'), s.id, s.total_amount]),
+        ...currentMonthSales.map(s => {
+          let dateStr = '';
+          try {
+            dateStr = format(new Date(s.date), 'yyyy-MM-dd');
+          } catch (_) {
+            dateStr = s.date;
+          }
+          return [dateStr, s.id, s.total_amount];
+        }),
         [],
         ['Expense Details'],
         ['Date', 'Category', 'Amount'],
-        ...currentMonthExpenses.map(e => [format(new Date(e.date), 'yyyy-MM-dd'), e.category, e.amount])
+        ...currentMonthExpenses.map(e => {
+          let dateStr = '';
+          try {
+            dateStr = format(new Date(e.date), 'yyyy-MM-dd');
+          } catch (_) {
+            dateStr = e.date;
+          }
+          return [dateStr, e.category, e.amount];
+        })
       ];
       const ws = XLSX.utils.aoa_to_sheet(reportData);
-      XLSX.utils.book_append_sheet(wb, ws, 'Monthly Report');
+      XLSX.utils.book_append_sheet(wb, ws, 'Report Overview');
     }
 
-    XLSX.writeFile(wb, `FreshPOS_Report_${format(selectedMonth, 'yyyy_MM')}.xlsx`);
+    XLSX.writeFile(wb, `FreshPOS_Report_${fileSuffix}.xlsx`);
   };
 
   const handleMasterExport = async () => {
@@ -400,29 +575,79 @@ export function Report() {
   return (
     <div className="space-y-6">
       {/* Header section with selector and Export */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-pink-100 rounded-xl">
             <Layers className="w-6 h-6 text-pink-600" />
           </div>
           <div>
-            <h2 className="text-xl font-bold text-slate-900">Performance Report (လစဉ် အစီရင်ခံစာဇယား)</h2>
+            <h2 className="text-xl font-bold text-slate-900">
+              Performance Report ({reportPeriod === 'monthly' ? 'လစဉ်' : reportPeriod === 'yearly' ? `${selectedYear} နှစ်စဉ်` : 'လအားလုံး/စုစုပေါင်း'} အစီရင်ခံစာဇယား)
+            </h2>
             <p className="text-sm text-slate-500">Business overview, Sales, Purchasing & Inventory analysis</p>
           </div>
         </div>
         
-        <div className="flex items-center gap-3">
-          <select 
-            className="px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none shadow-sm font-semibold text-slate-800"
-            value={selectedMonth.toISOString()}
-            onChange={(e) => setSelectedMonth(new Date(e.target.value))}
-          >
-            {months.map(m => (
-              <option key={m.toISOString()} value={m.toISOString()}>
-                {format(m, 'MMMM yyyy')}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Period Tabs Selector */}
+          <div className="flex bg-slate-100 p-1 rounded-xl shadow-xs border border-slate-200/50">
+            <button
+              onClick={() => setReportPeriod('monthly')}
+              className={cn(
+                "px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all whitespace-nowrap",
+                reportPeriod === 'monthly' ? "bg-white text-pink-600 shadow-xs" : "text-slate-600 hover:text-slate-800"
+              )}
+            >
+              လစဉ် (Monthly)
+            </button>
+            <button
+              onClick={() => setReportPeriod('yearly')}
+              className={cn(
+                "px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all whitespace-nowrap",
+                reportPeriod === 'yearly' ? "bg-white text-pink-600 shadow-xs" : "text-slate-600 hover:text-slate-800"
+              )}
+            >
+              နှစ်စဉ် (Yearly)
+            </button>
+            <button
+              onClick={() => setReportPeriod('all-time')}
+              className={cn(
+                "px-3 py-1.5 text-xs font-bold rounded-lg cursor-pointer transition-all whitespace-nowrap",
+                reportPeriod === 'all-time' ? "bg-white text-pink-600 shadow-xs" : "text-slate-600 hover:text-slate-800"
+              )}
+            >
+              စုစုပေါင်း (All Time)
+            </button>
+          </div>
+
+          {/* Conditional Dropdowns */}
+          {reportPeriod === 'monthly' && (
+            <select 
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none shadow-sm font-semibold text-slate-800 text-xs sm:text-sm"
+              value={selectedMonth.toISOString()}
+              onChange={(e) => setSelectedMonth(new Date(e.target.value))}
+            >
+              {months.map(m => (
+                <option key={m.toISOString()} value={m.toISOString()}>
+                  {format(m, 'MMMM yyyy')}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {reportPeriod === 'yearly' && (
+            <select 
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl focus:ring-2 focus:ring-pink-500 outline-none shadow-sm font-semibold text-slate-800 text-xs sm:text-sm"
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+            >
+              {years.map(y => (
+                <option key={y} value={y}>
+                  နှစ် {y}
+                </option>
+              ))}
+            </select>
+          )}
           
           <button 
             onClick={exportToExcel}
@@ -435,30 +660,42 @@ export function Report() {
       </div>
 
       {/* Primary Tab Selector */}
-      <div className="flex border-b border-slate-200 bg-white p-1 rounded-2xl shadow-sm">
+      <div className="flex flex-col sm:flex-row border border-slate-200 bg-white p-1 rounded-2xl shadow-sm gap-1 sm:gap-0">
         <button
           onClick={() => setActiveTab('detailed')}
           className={cn(
-            "flex-1 py-3 text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2",
+            "flex-1 py-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2",
             activeTab === 'detailed' 
               ? "bg-pink-50 text-pink-700 shadow-inner" 
               : "text-slate-500 hover:text-slate-800"
           )}
         >
           <ArrowRightLeft className="w-4 h-4" />
-          Monthly Detailed Report (လစဉ်အသေးစိတ် အစီရင်ခံစာ)
+          <span>Detailed Report (လစဉ်အသေးစိတ်)</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('profits')}
+          className={cn(
+            "flex-1 py-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 border-y sm:border-y-0 sm:border-x border-slate-100",
+            activeTab === 'profits' 
+              ? "bg-pink-50 text-pink-700 shadow-inner" 
+              : "text-slate-500 hover:text-slate-800"
+          )}
+        >
+          <DollarSign className="w-4 h-4 text-emerald-600 animate-pulse" />
+          <span>Item-wise Profits (တစ်ဘူးချင်းစီ အမြတ်စာရင်း)</span>
         </button>
         <button
           onClick={() => setActiveTab('overview')}
           className={cn(
-            "flex-1 py-3 text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2",
+            "flex-1 py-3 text-xs sm:text-sm font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2",
             activeTab === 'overview' 
               ? "bg-pink-50 text-pink-700 shadow-inner" 
               : "text-slate-500 hover:text-slate-800"
           )}
         >
-          <TrendingUp className="w-4 h-4" />
-          Performance & Margins (အမြတ်အစွန်းဆန်းစစ်ချက်)
+          <TrendingUp className="w-4 h-4 text-pink-600" />
+          <span>Performance & Margins (ခြုံငုံသုံးသပ်ချက်)</span>
         </button>
       </div>
 
@@ -559,7 +796,9 @@ export function Report() {
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShoppingCart className="w-4.5 h-4.5 text-pink-600" />
-                  <h3 className="font-bold text-sm text-slate-900">Purchases this Month (ပစ္စည်းဝယ်ယူမှုများ)</h3>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    {reportPeriod === 'monthly' ? 'Purchases this Month' : reportPeriod === 'yearly' ? 'Purchases this Year' : 'All-time Purchases'} (ပစ္စည်းဝယ်ယူမှုများ)
+                  </h3>
                 </div>
                 <span className="text-[10px] bg-pink-100 text-pink-600 px-2 py-0.5 rounded-full font-bold">
                   {monthlyPurchasedProducts.length} Items
@@ -605,7 +844,9 @@ export function Report() {
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShoppingBag className="w-4.5 h-4.5 text-rose-600" />
-                  <h3 className="font-bold text-sm text-slate-900">Sales this Month (အရောင်းစာရင်း)</h3>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    {reportPeriod === 'monthly' ? 'Sales this Month' : reportPeriod === 'yearly' ? 'Sales this Year' : 'All-time Sales'} (အရောင်းစာရင်း)
+                  </h3>
                 </div>
                 <span className="text-[10px] bg-rose-100 text-rose-600 px-2 py-0.5 rounded-full font-bold">
                   {monthlySoldProducts.length} Items
@@ -622,14 +863,28 @@ export function Report() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {monthlySoldProducts.map((p, idx) => (
-                      <tr key={idx} className="hover:bg-slate-50/50">
-                        <td className="px-4 py-2.5 font-medium text-slate-800 break-words whitespace-normal text-[11px]" title={p.name}>{p.name}</td>
-                        <td className="px-3 py-2.5 text-center font-bold text-slate-700">{p.qty}</td>
-                        <td className="px-3 py-2.5 text-right text-slate-500">{formatMMK(p.avgPrice)}</td>
-                        <td className="px-4 py-2.5 text-right font-bold text-slate-800">{formatMMK(p.totalRev)}</td>
-                      </tr>
-                    ))}
+                    {monthlySoldProducts.map((p, idx) => {
+                      const itemProfit = p.profit;
+                      const itemPercent = p.totalRev > 0 ? (itemProfit / p.totalRev) * 100 : 0;
+                      return (
+                        <tr key={idx} className="hover:bg-slate-50/50">
+                          <td className="px-4 py-2 flex flex-col justify-center min-h-[50px]">
+                            <span className="font-bold text-slate-800 break-words whitespace-normal text-[11px] leading-tight" title={p.name}>
+                              {p.name}
+                            </span>
+                            <span className={cn(
+                              "text-[10px] font-extrabold mt-0.5",
+                              itemProfit >= 0 ? "text-emerald-600" : "text-rose-600"
+                            )}>
+                              အမြတ်: {itemProfit >= 0 ? '+' : ''}{formatMMK(itemProfit)} ({itemPercent.toFixed(0)}%)
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center font-bold text-slate-700">{p.qty}</td>
+                          <td className="px-3 py-2 text-right text-slate-500">{formatMMK(p.avgPrice)}</td>
+                          <td className="px-4 py-2 text-right font-black text-slate-800">{formatMMK(p.totalRev)}</td>
+                        </tr>
+                      );
+                    })}
                     {monthlySoldProducts.length === 0 && (
                       <tr>
                         <td colSpan={4} className="px-4 py-12 text-center text-slate-400 italic">
@@ -651,7 +906,9 @@ export function Report() {
               <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Receipt className="w-4.5 h-4.5 text-purple-600" />
-                  <h3 className="font-bold text-sm text-slate-900">Expenses breakdown (အသုံးစရိတ်)</h3>
+                  <h3 className="font-bold text-sm text-slate-900">
+                    {reportPeriod === 'monthly' ? 'Expenses breakdown' : reportPeriod === 'yearly' ? 'Expenses breakdown' : 'All-time Expenses'} (အသုံးစရိတ်)
+                  </h3>
                 </div>
                 <span className="text-[10px] bg-purple-100 text-purple-600 px-2 py-0.5 rounded-full font-bold">
                   {currentMonthExpenses.length} Notes
@@ -762,6 +1019,185 @@ export function Report() {
             <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center text-sm font-black text-slate-900">
               <span>Total Capital Inventory Assessment:</span>
               <span className="text-teal-600 text-lg">{formatMMK(totalInventoryValue)}</span>
+            </div>
+          </div>
+        </div>
+      ) : activeTab === 'profits' ? (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header & KPI Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-xl">
+                <DollarSign className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400">Total Sales Profit (ရောင်းရငွေမှ စုစုပေါင်းအမြတ်)</p>
+                <p className="text-lg font-black text-emerald-600 mt-0.5">
+                  {formatMMK(filteredAndSortedProfits.reduce((sum, p) => sum + p.profit, 0))}
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">
+                <ShoppingBag className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400">Total Items Sold (ရောင်းချရသည့် စုစုပေါင်းအရေအတွက်)</p>
+                <p className="text-lg font-black text-blue-600 mt-0.5">
+                  {filteredAndSortedProfits.reduce((sum, p) => sum + p.qty, 0)} ဘူး
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex items-center gap-4">
+              <div className="p-3 bg-purple-50 text-purple-600 rounded-xl">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-400">Average Margin % (ပျှမ်းမျှ အမြတ်ရာခိုင်နှုန်း)</p>
+                <p className="text-lg font-black text-purple-600 mt-0.5">
+                  {(() => {
+                    const totalRev = filteredAndSortedProfits.reduce((sum, p) => sum + p.totalRev, 0);
+                    const totalProfit = filteredAndSortedProfits.reduce((sum, p) => sum + p.profit, 0);
+                    return totalRev > 0 ? ((totalProfit / totalRev) * 100).toFixed(1) + '%' : '0%';
+                  })()}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Filtering and Sorting Row */}
+          <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="relative w-full md:max-w-md">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={searchProfitQuery}
+                onChange={(e) => setSearchProfitQuery(e.target.value)}
+                placeholder="Product Name သို့မဟုတ် Code ဖြင့် ရှာဖွေပါ..."
+                className="w-full pl-9 pr-4 py-2.5 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-pink-500 bg-slate-50/50"
+              />
+              {searchProfitQuery && (
+                <button 
+                  onClick={() => setSearchProfitQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 self-stretch md:self-auto justify-end">
+              <span className="text-xs font-bold text-slate-400 whitespace-nowrap flex items-center gap-1">
+                <ArrowUpDown className="w-3.5 h-3.5" /> Filter/Sort:
+              </span>
+              <select
+                value={profitSortBy}
+                onChange={(e) => setProfitSortBy(e.target.value as any)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:ring-1 focus:ring-pink-500 cursor-pointer"
+              >
+                <option value="profit">Highest Profit (အမြတ်အများဆုံး)</option>
+                <option value="qty">Units Sold (အရောင်းရဆုံး)</option>
+                <option value="rev">Total Revenue (ရောင်းရငွေ အများဆုံး)</option>
+                <option value="name">Name A-Z (အက္ခရာအစဉ်အတိုင်း)</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="p-4 border-b border-slate-100 bg-slate-50/30 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900 text-xs">
+                Item-wise profit ledger ({currentPeriodLabel})
+              </h3>
+              <span className="text-[11px] bg-emerald-100 text-emerald-800 px-2.5 py-1 rounded-full font-black">
+                {filteredAndSortedProfits.length} items sold
+              </span>
+            </div>
+
+            <div className="overflow-x-auto text-xs sm:text-sm">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200">
+                    <th className="px-6 py-4 font-semibold text-slate-600">Product Code/Name</th>
+                    <th className="px-4 py-4 font-semibold text-slate-600 text-center">Units Sold</th>
+                    <th className="px-4 py-4 font-semibold text-slate-600 text-right">Selling Price (Avg)</th>
+                    <th className="px-4 py-4 font-semibold text-slate-600 text-right">Cost Price (Avg)</th>
+                    <th className="px-4 py-4 font-semibold text-slate-600 text-right">Total Revenue</th>
+                    <th className="px-4 py-4 font-semibold text-slate-600 text-right">Total Cost</th>
+                    <th className="px-6 py-4 font-semibold text-slate-600 text-right">Total Net Profit</th>
+                    <th className="px-6 py-4 font-semibold text-slate-600 text-center">Margin %</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredAndSortedProfits.map((p, idx) => {
+                    const master = masterProducts.find(m => m.name.toLowerCase() === p.name.toLowerCase());
+                    const marginPercent = p.totalRev > 0 ? (p.profit / p.totalRev) * 100 : 0;
+                    
+                    return (
+                      <tr key={idx} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-6 py-3.5">
+                          <span className="font-mono text-[10px] text-slate-400 font-bold block">{master?.productCode || '-'}</span>
+                          <span className="font-black text-slate-800 text-[11px] block mt-0.5 p-0" title={p.name}>{p.name}</span>
+                        </td>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-700 text-[11px]">
+                          {p.qty}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-medium text-slate-500 whitespace-nowrap">
+                          {formatMMK(p.avgPrice)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-medium text-slate-500 whitespace-nowrap">
+                          {formatMMK(p.avgCost)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-extrabold text-slate-800 whitespace-nowrap">
+                          {formatMMK(p.totalRev)}
+                        </td>
+                        <td className="px-4 py-3.5 text-right text-slate-500 whitespace-nowrap">
+                          {formatMMK(p.totalCost)}
+                        </td>
+                        <td className="px-6 py-3.5 text-right whitespace-nowrap">
+                          <span className={cn(
+                            "font-black text-[12px]",
+                            p.profit >= 0 ? "text-emerald-600" : "text-rose-600"
+                          )}>
+                            {p.profit >= 0 ? '+' : ''}{formatMMK(p.profit)}
+                          </span>
+                        </td>
+                        <td className="px-6 py-3.5 text-center whitespace-nowrap">
+                          <span className={cn(
+                            "px-2.5 py-0.5 rounded-full text-[10px] font-black",
+                            p.profit >= 0 ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"
+                          )}>
+                            {marginPercent.toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {filteredAndSortedProfits.length === 0 && (
+                    <tr>
+                      <td colSpan={8} className="px-6 py-16 text-center text-slate-400 italic">
+                        ရောင်းချရသည့် ပစ္စည်းမှတ်တမ်း မရှိပါ။
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Total Footer row */}
+            <div className="p-5 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row justify-between items-center text-xs font-black text-slate-900 gap-4">
+              <span className="text-[11px] text-slate-400 font-normal">
+                * အထက်ပါ ဇယားသည် ရွေးချယ်ထားသော ကာလအပိုင်းအခြားအတွင်း ရောင်းချခဲ့ရသည့် ပစ္စည်းတစ်ခုချင်းစီ၏ ရင်းနှီးငွေနှင့် အမြတ်ငွေစာရင်း ဖြစ်သည်။
+              </span>
+              <div className="flex items-center gap-2 self-end">
+                <span>စုစုပေါင်းအသားတင်အမြတ်:</span>
+                <span className="text-emerald-600 text-sm font-black">
+                  {formatMMK(filteredAndSortedProfits.reduce((sum, p) => sum + p.profit, 0))}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -924,12 +1360,14 @@ export function Report() {
                   )}
                 </div>
                 <h4 className="text-lg font-bold text-slate-900 mb-2">
-                  {netProfit >= 0 ? 'Profitable Month!' : 'Loss this Month'}
+                  {netProfit >= 0 
+                    ? `${reportPeriod === 'monthly' ? 'Profitable Month!' : reportPeriod === 'yearly' ? 'Profitable Year!' : 'Profitable All-Time!'}` 
+                    : `${reportPeriod === 'monthly' ? 'Loss this Month' : reportPeriod === 'yearly' ? 'Loss this Year' : 'Net Loss All-Time'}`}
                 </h4>
                 <p className="text-sm text-slate-500 max-w-[250px]">
                   {netProfit >= 0 
-                    ? `You've made a net profit of ${formatMMK(netProfit)} this month. Keep up the good work!`
-                    : `You've incurred a loss of ${formatMMK(Math.abs(netProfit))} this month. Review your expenses.`}
+                    ? `You've made a net profit of ${formatMMK(netProfit)} during this period. Keep up the good work!`
+                    : `You've incurred a loss of ${formatMMK(Math.abs(netProfit))} during this period. Review your expenses.`}
                 </p>
               </div>
             </div>
@@ -939,7 +1377,7 @@ export function Report() {
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
               <h3 className="font-bold text-slate-900">Product Sales Performance Balance</h3>
-              <span className="text-xs text-slate-500 italic">Actual sales and profits for {format(selectedMonth, 'MMMM yyyy')}</span>
+              <span className="text-xs text-slate-500 italic">Actual sales and profits for {currentPeriodLabel}</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">

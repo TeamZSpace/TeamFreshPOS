@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, query, updateDoc, doc, deleteDoc, serverTimestamp, orderBy, limit } from 'firebase/firestore';
 import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, AlertCircle, Calendar, Package, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet } from 'lucide-react';
-import { cn, handleFirestoreError, OperationType, formatMMK, useSortableData } from '../lib/utils';
+import { cn, handleFirestoreError, OperationType, formatMMK, useSortableData, saveToCache, getFromCache } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 import * as XLSX from 'xlsx';
@@ -65,13 +65,13 @@ interface InventoryLog {
 import { notifyUndo } from '../lib/notifications';
 
 export function Inventory() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
-  const [logs, setLogs] = useState<InventoryLog[]>([]);
+  const [products, setProducts] = useState<Product[]>(() => getFromCache<Product>('products'));
+  const [categories, setCategories] = useState<Category[]>(() => getFromCache<Category>('categories'));
+  const [suppliers, setSuppliers] = useState<Supplier[]>(() => getFromCache<Supplier>('suppliers'));
+  const [logs, setLogs] = useState<InventoryLog[]>(() => getFromCache<InventoryLog>('inventory_logs'));
   const [view, setView] = useState<'inventory' | 'logs'>('inventory');
   const [activeFilter, setActiveFilter] = useState<'all' | 'in-stock' | 'out-of-stock' | 'expiring'>('all');
-  const [masterProducts, setMasterProducts] = useState<ProductDefinition[]>([]);
+  const [masterProducts, setMasterProducts] = useState<ProductDefinition[]>(() => getFromCache<ProductDefinition>('productMaster'));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -99,23 +99,33 @@ export function Inventory() {
 
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(data);
+      saveToCache('products', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
 
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
-      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+      setCategories(data);
+      saveToCache('categories', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'categories'));
 
     const unsubSuppliers = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
-      setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Supplier));
+      setSuppliers(data);
+      saveToCache('suppliers', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'suppliers'));
 
     const unsubMaster = onSnapshot(collection(db, 'productMaster'), (snapshot) => {
-      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductDefinition)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ProductDefinition));
+      setMasterProducts(data);
+      saveToCache('productMaster', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
 
     const unsubLogs = onSnapshot(query(collection(db, 'inventory_logs'), orderBy('date', 'desc'), limit(100)), (snapshot) => {
-      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryLog)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as InventoryLog));
+      setLogs(data);
+      saveToCache('inventory_logs', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'inventory_logs'));
 
     return () => {

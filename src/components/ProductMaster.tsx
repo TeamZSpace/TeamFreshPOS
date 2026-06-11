@@ -8,10 +8,19 @@ import { format } from 'date-fns';
 import * as XLSX from 'xlsx';
 
 function replaceBrandInText(text: string, oldBrand: string, newBrand: string): string {
-  if (!text || !oldBrand || !newBrand || oldBrand.trim().toLowerCase() === newBrand.trim().toLowerCase()) return text;
-  const escaped = oldBrand.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+  if (!text) return '';
+  const trimmedOld = (oldBrand || '').trim();
+  const trimmedNew = (newBrand || '').trim();
+  if (!trimmedNew || trimmedOld.toLowerCase() === trimmedNew.toLowerCase()) return text;
+  if (!trimmedOld) {
+    if (!text.toLowerCase().includes(trimmedNew.toLowerCase())) {
+      return `${trimmedNew} ${text}`;
+    }
+    return text;
+  }
+  const escaped = trimmedOld.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
   const regex = new RegExp(escaped, 'gi');
-  return text.replace(regex, newBrand);
+  return text.replace(regex, trimmedNew);
 }
 
 async function propagateProductMasterChanges(
@@ -29,6 +38,16 @@ async function propagateProductMasterChanges(
     oldBrand?: string;
   }
 ) {
+  const nameChanged = (changes.oldName || '').trim().toLowerCase() !== (changes.newName || '').trim().toLowerCase();
+  const codeChanged = (changes.oldProductCode || '').trim().toLowerCase() !== (changes.newProductCode || '').trim().toLowerCase();
+  const brandChanged = (changes.oldBrand || '').trim().toLowerCase() !== (changes.newBrand || '').trim().toLowerCase();
+
+  // If none of the relevant fields changed, we skip to conserve Firestore daily quota
+  if (!nameChanged && !codeChanged && !brandChanged) {
+    console.log('No relevant fields (name, code, brand) changed. Propagation skipped.');
+    return;
+  }
+
   try {
     const batch = writeBatch(db);
     const exactProductIds = new Set<string>();
@@ -54,13 +73,11 @@ async function propagateProductMasterChanges(
       if (isMatch) {
         exactProductIds.add(productDoc.id);
         const productRef = doc(db, 'products', productDoc.id);
+        const updatedName = replaceBrandInText(data.name || '', oldBrand, changes.newBrand);
         batch.update(productRef, {
-          name: changes.newName,
-          productCode: changes.newProductCode,
+          name: updatedName,
           brand: changes.newBrand,
-          dosage: changes.newDosage || '',
-          unitCount: changes.newUnitCount || '',
-          dosageForm: changes.newDosageForm || '',
+          productCode: changes.newProductCode,
           updatedAt: serverTimestamp()
         });
       } else {
@@ -116,7 +133,8 @@ async function propagateProductMasterChanges(
             updated = true;
             return {
               ...item,
-              name: changes.newName,
+              name: replaceBrandInText(item.name || '', oldBrand, changes.newBrand),
+              productCode: changes.newProductCode,
               product_id: item.product_id ? item.product_id : masterId
             };
           }
@@ -128,7 +146,7 @@ async function propagateProductMasterChanges(
             updated = true;
             return {
               ...item,
-              name: replaceBrandInText(item.name, oldBrand, changes.newBrand)
+              name: replaceBrandInText(item.name || '', oldBrand, changes.newBrand)
             };
           }
 
@@ -161,7 +179,8 @@ async function propagateProductMasterChanges(
             updated = true;
             return {
               ...item,
-              name: changes.newName,
+              name: replaceBrandInText(item.name || '', oldBrand, changes.newBrand),
+              productCode: changes.newProductCode,
               product_id: item.product_id ? item.product_id : masterId
             };
           }
@@ -173,7 +192,7 @@ async function propagateProductMasterChanges(
             updated = true;
             return {
               ...item,
-              name: replaceBrandInText(item.name, oldBrand, changes.newBrand)
+              name: replaceBrandInText(item.name || '', oldBrand, changes.newBrand)
             };
           }
 
@@ -202,7 +221,8 @@ async function propagateProductMasterChanges(
       if (isExactIdMatch || isExactCodeMatch || isExactNameMatch) {
         const logRef = doc(db, 'inventory_logs', logDoc.id);
         batch.update(logRef, {
-          productName: changes.newName,
+          productName: replaceBrandInText(data.productName || '', oldBrand, changes.newBrand),
+          productCode: changes.newProductCode,
           product_id: data.product_id ? data.product_id : masterId
         });
       } else {
@@ -212,7 +232,7 @@ async function propagateProductMasterChanges(
         if (isSiblingIdMatch || containsOldBrand) {
           const logRef = doc(db, 'inventory_logs', logDoc.id);
           batch.update(logRef, {
-            productName: replaceBrandInText(data.productName, oldBrand, changes.newBrand)
+            productName: replaceBrandInText(data.productName || '', oldBrand, changes.newBrand)
           });
         }
       }
@@ -220,7 +240,12 @@ async function propagateProductMasterChanges(
 
     await batch.commit();
   } catch (err) {
-    console.error('Failed to propagate Product Master changes:', err);
+    const isQuota = String(err).toLowerCase().includes('quota') || String(err).toLowerCase().includes('exhausted');
+    if (isQuota) {
+      console.warn('Failed to propagate Product Master changes due to Firestore Quota limit:', err);
+    } else {
+      console.error('Failed to propagate Product Master changes:', err);
+    }
   }
 }
 

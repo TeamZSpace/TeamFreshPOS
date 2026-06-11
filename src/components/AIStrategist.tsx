@@ -2,7 +2,7 @@ import React from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import { MessageSquare, Send, Bot, Sparkles, TrendingUp, AlertCircle, Loader2, Minimize2 } from 'lucide-react';
-import { formatMMK, cn } from '../lib/utils';
+import { formatMMK, cn, handleFirestoreError, OperationType } from '../lib/utils';
 import { format } from 'date-fns';
 import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
@@ -40,10 +40,10 @@ export function AIStrategist() {
     if (!db) return;
     const unsubProducts = onSnapshot(collection(db, 'products'), (snap) => {
       setProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
     const unsubSales = onSnapshot(query(collection(db, 'sales'), orderBy('date', 'desc'), limit(50)), (snap) => {
       setSales(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     return () => {
       unsubProducts();

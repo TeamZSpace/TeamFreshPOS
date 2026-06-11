@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, addDoc, onSnapshot, doc, updateDoc, getDoc, serverTimestamp, runTransaction, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { Plus, TrendingUp, User, ShoppingBag, MapPin, CreditCard, Calendar, Trash2, Search, Edit2, AlertTriangle, ArrowUpDown, ArrowUp, ArrowDown, FileSpreadsheet, RotateCcw } from 'lucide-react';
-import { cn, handleFirestoreError, OperationType, formatMMK, myanmarToEnglishNumerals, useSortableData } from '../lib/utils';
+import { cn, handleFirestoreError, OperationType, formatMMK, myanmarToEnglishNumerals, useSortableData, saveToCache, getFromCache } from '../lib/utils';
 import { format } from 'date-fns';
 import { ConfirmModal } from './ConfirmModal';
 import * as XLSX from 'xlsx';
@@ -70,11 +70,11 @@ interface Customer {
 import { notifyUndo } from '../lib/notifications';
 
 export function Sales() {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>([]);
-  const [customers, setCustomers] = useState<Customer[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
+  const [sales, setSales] = useState<Sale[]>(() => getFromCache<Sale>('sales'));
+  const [products, setProducts] = useState<Product[]>(() => getFromCache<Product>('products'));
+  const [masterProducts, setMasterProducts] = useState<MasterProduct[]>(() => getFromCache<MasterProduct>('productMaster'));
+  const [customers, setCustomers] = useState<Customer[]>(() => getFromCache<Customer>('customers'));
+  const [categories, setCategories] = useState<Category[]>(() => getFromCache<Category>('categories'));
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
@@ -83,7 +83,7 @@ export function Sales() {
     isOpen: false,
     sale: null
   });
-  const [deletedSales, setDeletedSales] = useState<Sale[]>([]);
+  const [deletedSales, setDeletedSales] = useState<Sale[]>(() => getFromCache<Sale>('deleted_sales'));
   const [activeTab, setActiveTab] = useState<'active' | 'deleted'>('active');
   const [restoreConfirm, setRestoreConfirm] = useState<{ isOpen: boolean; sale: Sale | null }>({
     isOpen: false,
@@ -132,47 +132,59 @@ export function Sales() {
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => {
-        const data = doc.data();
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data();
         return { 
           id: doc.id, 
-          ...data,
-          total_amount: Number(data.total_amount || data.totalAmount || 0),
-          subtotal: Number(data.subtotal || 0),
-          gross_amount: Number(data.gross_amount || data.subtotal || 0),
-          order_no: data.order_no || data.orderNumber
+          ...d,
+          total_amount: Number(d.total_amount || d.totalAmount || 0),
+          subtotal: Number(d.subtotal || d.sub_total || 0),
+          gross_amount: Number(d.gross_amount || d.subtotal || 0),
+          order_no: d.order_no || d.orderNumber
         } as Sale;
-      }));
+      });
+      setSales(data);
+      saveToCache('sales', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
 
     const unsubDeletedSales = onSnapshot(collection(db, 'deleted_sales'), (snapshot) => {
-      setDeletedSales(snapshot.docs.map(doc => {
-        const data = doc.data();
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data();
         return { 
           id: doc.id, 
-          ...data,
-          total_amount: Number(data.total_amount || data.totalAmount || 0),
-          subtotal: Number(data.subtotal || 0),
-          gross_amount: Number(data.gross_amount || data.subtotal || 0),
-          order_no: data.order_no || data.orderNumber
+          ...d,
+          total_amount: Number(d.total_amount || d.totalAmount || 0),
+          subtotal: Number(d.subtotal || d.sub_total || 0),
+          gross_amount: Number(d.gross_amount || d.subtotal || 0),
+          order_no: d.order_no || d.orderNumber
         } as Sale;
-      }));
+      });
+      setDeletedSales(data);
+      saveToCache('deleted_sales', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'deleted_sales'));
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(data);
+      saveToCache('products', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
 
     const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Customer));
+      setCustomers(data);
+      saveToCache('customers', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'customers'));
 
     const unsubCategories = onSnapshot(collection(db, 'categories'), (snapshot) => {
-      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Category));
+      setCategories(data);
+      saveToCache('categories', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'categories'));
 
     const unsubMaster = onSnapshot(collection(db, 'productMaster'), (snapshot) => {
-      setMasterProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MasterProduct));
+      setMasterProducts(data);
+      saveToCache('productMaster', data);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'productMaster'));
 
     return () => {

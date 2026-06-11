@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../firebase';
 import { collection, onSnapshot, query, orderBy, limit, doc } from 'firebase/firestore';
 import { TrendingUp, TrendingDown, DollarSign, Package, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight, FileSpreadsheet, RefreshCw, Calculator } from 'lucide-react';
-import { handleFirestoreError, OperationType, cn, formatMMK } from '../lib/utils';
+import { handleFirestoreError, OperationType, cn, formatMMK, saveToCache, getFromCache, saveDocToCache, getDocFromCache } from '../lib/utils';
 import { format, subDays, isAfter } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 import { exportAllToExcel } from '../lib/exportUtils';
@@ -47,55 +47,81 @@ interface Settings {
 }
 
 export function Dashboard() {
-  const [sales, setSales] = useState<Sale[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [expenses, setExpenses] = useState<Expense[]>([]);
-  const [purchases, setPurchases] = useState<Purchase[]>([]);
-  const [settings, setSettings] = useState<Settings>({ openingCash: 20000000 });
+  const [sales, setSales] = useState<Sale[]>(() => getFromCache<Sale>('sales'));
+  const [products, setProducts] = useState<Product[]>(() => getFromCache<Product>('products'));
+  const [expenses, setExpenses] = useState<Expense[]>(() => getFromCache<Expense>('expenses'));
+  const [purchases, setPurchases] = useState<Purchase[]>(() => getFromCache<Purchase>('purchases'));
+  const [settings, setSettings] = useState<Settings>(() => getDocFromCache<Settings>('company_settings', { openingCash: 20000000 })!);
+  
   const [loading, setLoading] = useState({
-    sales: true,
-    products: true,
-    expenses: true,
-    purchases: true,
-    settings: true
+    sales: sales.length === 0,
+    products: products.length === 0,
+    expenses: expenses.length === 0,
+    purchases: purchases.length === 0,
+    settings: !settings
   });
   const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     const unsubSales = onSnapshot(collection(db, 'sales'), (snapshot) => {
-      setSales(snapshot.docs.map(doc => {
-        const data = doc.data();
+      const data = snapshot.docs.map(doc => {
+        const d = doc.data();
         return { 
           id: doc.id, 
-          ...data,
-          total_amount: Number(data.total_amount || data.totalAmount || 0),
-          subtotal: Number(data.subtotal || 0),
-          gross_amount: Number(data.gross_amount || data.subtotal || 0),
-          order_no: data.order_no || data.orderNumber
+          ...d,
+          total_amount: Number(d.total_amount || d.totalAmount || 0),
+          subtotal: Number(d.subtotal || 0),
+          gross_amount: Number(d.gross_amount || d.subtotal || 0),
+          order_no: d.order_no || d.orderNumber
         } as Sale;
-      }));
+      });
+      setSales(data);
+      saveToCache('sales', data);
       setLoading(prev => ({ ...prev, sales: false }));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'sales'));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'sales');
+      setLoading(prev => ({ ...prev, sales: false }));
+    });
 
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
-      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(data);
+      saveToCache('products', data);
       setLoading(prev => ({ ...prev, products: false }));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'products'));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'products');
+      setLoading(prev => ({ ...prev, products: false }));
+    });
 
     const unsubExpenses = onSnapshot(collection(db, 'expenses'), (snapshot) => {
-      setExpenses(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
+      setExpenses(data);
+      saveToCache('expenses', data);
       setLoading(prev => ({ ...prev, expenses: false }));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'expenses'));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'expenses');
+      setLoading(prev => ({ ...prev, expenses: false }));
+    });
 
     const unsubPurchases = onSnapshot(collection(db, 'purchases'), (snapshot) => {
-      setPurchases(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase)));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Purchase));
+      setPurchases(data);
+      saveToCache('purchases', data);
       setLoading(prev => ({ ...prev, purchases: false }));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'purchases'));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'purchases');
+      setLoading(prev => ({ ...prev, purchases: false }));
+    });
 
     const unsubSettings = onSnapshot(doc(db, 'settings', 'company'), (snapshot) => {
       if (snapshot.exists()) {
-        setSettings(snapshot.data() as Settings);
+        const data = snapshot.data() as Settings;
+        setSettings(data);
+        saveDocToCache('company_settings', data);
       }
+      setLoading(prev => ({ ...prev, settings: false }));
+    }, (err) => {
+      handleFirestoreError(err, OperationType.GET, 'settings/company');
       setLoading(prev => ({ ...prev, settings: false }));
     });
 
@@ -108,7 +134,7 @@ export function Dashboard() {
     };
   }, []);
 
-  const isInitialLoading = Object.values(loading).some(l => l);
+  const isInitialLoading = Object.values(loading).some(l => l) && products.length === 0;
 
   if (isInitialLoading) {
     return (
